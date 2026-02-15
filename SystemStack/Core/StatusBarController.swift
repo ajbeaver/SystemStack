@@ -114,50 +114,50 @@ final class StatusBarController: NSObject {
         let modules = appState.orderedModules.compactMap { $0 as? BaseMenuModule }.filter(\.isEnabled)
         guard !modules.isEmpty else { return }
 
-        var mode = appState.appearanceSettings.displayMode
-        applyVisuals(modules, mode: mode)
+        var forceHideValues = false
+        applyVisuals(modules, forceHideValues: forceHideValues)
 
         if fitsWithinAvailableWidth(modules) {
             return
         }
 
-        if appState.overflowBehavior == .iconOnlyFallback, mode != .iconOnly {
-            mode = .iconOnly
-            applyVisuals(modules, mode: mode)
+        if appState.overflowBehavior == .iconOnlyFallback {
+            forceHideValues = true
+            applyVisuals(modules, forceHideValues: forceHideValues)
             if fitsWithinAvailableWidth(modules) {
                 return
             }
         }
 
-        hideTrailingUntilFits(modules, mode: mode)
+        hideTrailingUntilFits(modules, forceHideValues: forceHideValues)
     }
 
-    private func applyVisuals(_ modules: [BaseMenuModule], mode: AppState.DisplayMode) {
+    private func applyVisuals(_ modules: [BaseMenuModule], forceHideValues: Bool) {
         for module in modules {
             module.statusItem?.isVisible = true
             updateStatusItem(
                 for: module,
-                mode: mode
+                forceHideValues: forceHideValues
             )
         }
     }
 
     private func updateStatusItem(
         for module: BaseMenuModule,
-        mode: AppState.DisplayMode
+        forceHideValues: Bool
     ) {
         guard let button = module.statusItem?.button else { return }
 
         let value = module.displayValue.isEmpty ? "—" : module.displayValue
         let image = moduleImage(for: module)
+        let shouldShowValue = module.showsValue && !forceHideValues
 
-        switch mode {
-        case .iconOnly:
-            button.image = image
-            button.title = image == nil ? value : ""
-        case .iconAndValue:
+        if shouldShowValue {
             button.image = image
             button.title = value
+        } else {
+            button.image = image
+            button.title = image == nil ? value : ""
         }
 
         button.toolTip = "\(moduleShortLabel(for: module)) \(value)"
@@ -165,7 +165,7 @@ final class StatusBarController: NSObject {
 
     private func moduleImage(for module: BaseMenuModule) -> NSImage? {
         guard let symbolName = module.symbolName else { return nil }
-        let pointSize = symbolPointSize()
+        let pointSize: CGFloat = 13
         let cacheKey = "\(symbolName)-\(pointSize)"
 
         if let cached = cachedSymbolImages[cacheKey] {
@@ -185,15 +185,6 @@ final class StatusBarController: NSObject {
         return image
     }
 
-    private func symbolPointSize() -> CGFloat {
-        switch appState.symbolSize {
-        case .small:
-            return 11
-        case .standard:
-            return 13
-        }
-    }
-
     private func moduleShortLabel(for module: BaseMenuModule) -> String {
         switch module.id {
         case "cpu":
@@ -211,7 +202,7 @@ final class StatusBarController: NSObject {
         }
     }
 
-    private func hideTrailingUntilFits(_ modules: [BaseMenuModule], mode: AppState.DisplayMode) {
+    private func hideTrailingUntilFits(_ modules: [BaseMenuModule], forceHideValues: Bool) {
         var visibleCount = modules.count
 
         while visibleCount > 1 {
@@ -225,7 +216,7 @@ final class StatusBarController: NSObject {
         for (index, module) in modules.enumerated() {
             if index < visibleCount {
                 module.statusItem?.isVisible = true
-                updateStatusItem(for: module, mode: mode)
+                updateStatusItem(for: module, forceHideValues: forceHideValues)
             } else {
                 module.statusItem?.isVisible = false
             }

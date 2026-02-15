@@ -5,6 +5,7 @@ protocol MenuModule: AnyObject, Sendable {
     var id: String { get }
     var symbolName: String? { get }
     var isEnabled: Bool { get set }
+    var showsValue: Bool { get set }
     var displayValue: String { get }
     func update() async -> Bool
 }
@@ -22,13 +23,22 @@ class BaseMenuModule: TitledMenuModule, @unchecked Sendable {
 
     private let stateLock = NSLock()
     private var enabled: Bool
+    private var shouldShowValue: Bool
     private var value: String
 
-    init(id: String, title: String, symbolName: String?, isEnabled: Bool = false, defaultDisplayValue: String = "—") {
+    init(
+        id: String,
+        title: String,
+        symbolName: String?,
+        isEnabled: Bool = false,
+        showsValue: Bool = true,
+        defaultDisplayValue: String = "—"
+    ) {
         self.id = id
         self.title = title
         self.symbolName = symbolName
         self.enabled = isEnabled
+        self.shouldShowValue = showsValue
         self.value = defaultDisplayValue
     }
 
@@ -49,6 +59,19 @@ class BaseMenuModule: TitledMenuModule, @unchecked Sendable {
         stateLock.lock()
         defer { stateLock.unlock() }
         return value
+    }
+
+    var showsValue: Bool {
+        get {
+            stateLock.lock()
+            defer { stateLock.unlock() }
+            return shouldShowValue
+        }
+        set {
+            stateLock.lock()
+            shouldShowValue = newValue
+            stateLock.unlock()
+        }
     }
 
     func update() async -> Bool {

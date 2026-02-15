@@ -4,12 +4,6 @@ enum TimezoneMode: String, CaseIterable, Sendable {
     case system
     case utc
     case custom
-    case world
-}
-
-enum TimezoneLabelStyle: String, CaseIterable, Sendable {
-    case short
-    case compact
 }
 
 struct ClockSettings: Sendable {
@@ -19,7 +13,6 @@ struct ClockSettings: Sendable {
     var showAMPM: Bool
     var timezoneMode: TimezoneMode
     var showTimezoneLabel: Bool
-    var timezoneLabelStyle: TimezoneLabelStyle
     var selectedTimezones: [String]
 
     static func `default`(isEnabled: Bool = true) -> ClockSettings {
@@ -30,7 +23,6 @@ struct ClockSettings: Sendable {
             showAMPM: true,
             timezoneMode: .system,
             showTimezoneLabel: true,
-            timezoneLabelStyle: .short,
             selectedTimezones: []
         )
     }
@@ -51,12 +43,11 @@ private actor ClockRuntime {
         var normalized = newSettings
         normalized.selectedTimezones = Array(normalized.selectedTimezones.prefix(4))
 
-        let changed = settings.use24Hour != normalized.use24Hour
+            let changed = settings.use24Hour != normalized.use24Hour
             || settings.showSeconds != normalized.showSeconds
             || settings.showAMPM != normalized.showAMPM
             || settings.timezoneMode != normalized.timezoneMode
             || settings.showTimezoneLabel != normalized.showTimezoneLabel
-            || settings.timezoneLabelStyle != normalized.timezoneLabelStyle
             || settings.selectedTimezones != normalized.selectedTimezones
             || settings.isEnabled != normalized.isEnabled
 
@@ -131,13 +122,7 @@ private actor ClockRuntime {
         case .utc:
             let value = formatted(date: date, timezoneID: "UTC") ?? "—"
             guard settings.showTimezoneLabel else { return value }
-
-            switch settings.timezoneLabelStyle {
-            case .short:
-                return "\(value) UTC"
-            case .compact:
-                return settings.use24Hour ? "\(value)Z" : "\(value) UTC"
-            }
+            return "\(value) UTC"
 
         case .custom:
             let ids = resolvedTimezoneIDs(for: settings)
@@ -151,29 +136,6 @@ private actor ClockRuntime {
             guard settings.showTimezoneLabel else { return value }
             let label = shortZoneLabel(for: id, at: date)
             return "\(value) \(label)"
-
-        case .world:
-            let ids = resolvedTimezoneIDs(for: settings)
-            if ids.isEmpty {
-                let fallback = formatted(date: date, timezoneID: "system") ?? "—"
-                guard settings.showTimezoneLabel else { return fallback }
-                let label = shortZoneLabel(for: "system", at: date)
-                return "\(fallback) \(label)"
-            }
-
-            let parts = ids.compactMap { id -> String? in
-                guard let value = formatted(date: date, timezoneID: id) else { return nil }
-                guard settings.showTimezoneLabel else { return value }
-                let label = shortZoneLabel(for: id, at: date)
-                return "\(value) \(label)"
-            }
-
-            guard !parts.isEmpty else { return "—" }
-            let joined = parts.joined(separator: " | ")
-            if joined.count > 60 {
-                return String(joined.prefix(59)) + "…"
-            }
-            return joined
         }
     }
 
@@ -194,10 +156,6 @@ private actor ClockRuntime {
                 return [first]
             }
             return ["system"]
-        case .world:
-            let ids = settings.selectedTimezones
-                .filter { TimeZone(identifier: $0) != nil }
-            return ids.isEmpty ? ["system"] : Array(ids.prefix(4))
         }
     }
 
@@ -262,11 +220,22 @@ final class ClockModule: BaseMenuModule, @unchecked Sendable {
     private var timezoneObserver: NSObjectProtocol?
     private var localeObserver: NSObjectProtocol?
 
-    init(isEnabled: Bool = true, settings: ClockSettings? = nil) {
+    init(
+        id: String = "clock",
+        title: String = "Clock",
+        isEnabled: Bool = true,
+        settings: ClockSettings? = nil
+    ) {
         let resolved = settings ?? .default(isEnabled: isEnabled)
         self.runtime = ClockRuntime(settings: resolved)
 
-        super.init(id: "clock", title: "Clock", symbolName: "clock", isEnabled: isEnabled, defaultDisplayValue: "—")
+        super.init(
+            id: id,
+            title: title,
+            symbolName: "clock",
+            isEnabled: isEnabled,
+            defaultDisplayValue: "—"
+        )
 
         self.isEnabled = resolved.isEnabled
         registerSystemObservers()

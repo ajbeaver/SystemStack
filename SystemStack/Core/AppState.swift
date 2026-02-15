@@ -2,32 +2,7 @@ import Combine
 import SwiftUI
 
 final class AppState: ObservableObject {
-    enum DisplayMode: String, CaseIterable, Identifiable {
-        case iconOnly
-        case iconAndValue
-
-        var id: String { rawValue }
-
-        var title: String {
-            switch self {
-            case .iconOnly:
-                return "Icons only"
-            case .iconAndValue:
-                return "Icons + values"
-            }
-        }
-    }
-
-    struct AppearanceSettings {
-        var displayMode: DisplayMode = .iconAndValue
-    }
-
-    enum SymbolSize: String, CaseIterable, Identifiable {
-        case small = "Small"
-        case standard = "Standard"
-
-        var id: String { rawValue }
-    }
+    static let maxClockModules = 3
 
     enum OverflowBehavior: String, CaseIterable, Identifiable {
         case hideTrailing = "Hide Trailing"
@@ -46,27 +21,16 @@ final class AppState: ObservableObject {
     let statusEvents = PassthroughSubject<StatusEvent, Never>()
 
     @Published private(set) var orderedModules: [any MenuModule] = AppState.defaultModules()
-    @Published var appearanceSettings = AppearanceSettings() {
-        didSet {
-            statusEvents.send(.layoutChanged)
-        }
-    }
-    @Published var symbolSize: SymbolSize = .standard {
-        didSet {
-            statusEvents.send(.layoutChanged)
-        }
-    }
     @Published var overflowBehavior: OverflowBehavior = .hideTrailing {
         didSet {
             statusEvents.send(.layoutChanged)
         }
     }
-    @Published var clockSettings = ClockSettings.default(isEnabled: true)
+    @Published private var clockSettingsByModuleID: [String: ClockSettings] = ["clock": .default(isEnabled: true)]
 
     private let updateEngine = UpdateEngine()
 
     init() {
-        syncClockModuleSettings()
         startEngine()
     }
 
@@ -99,11 +63,12 @@ final class AppState: ObservableObject {
         guard let index = orderedModules.firstIndex(where: { $0.id == id }) else { return }
         orderedModules[index].isEnabled = isEnabled
 
-        if id == "clock" {
-            var updated = clockSettings
-            updated.isEnabled = isEnabled
-            clockSettings = updated
-            syncClockModuleSettings()
+        if var settings = clockSettingsByModuleID[id] {
+            settings.isEnabled = isEnabled
+            clockSettingsByModuleID[id] = settings
+            if let clockModule = orderedModules[index] as? ClockModule {
+                clockModule.applySettings(settings)
+            }
         }
 
         Task {
@@ -114,32 +79,91 @@ final class AppState: ObservableObject {
         objectWillChange.send()
     }
 
-    func updateClockSettings(_ mutate: (inout ClockSettings) -> Void) {
-        var updated = clockSettings
-        mutate(&updated)
-        updated.selectedTimezones = Array(updated.selectedTimezones.prefix(4))
+    func clockSettings(for moduleID: String) -> ClockSettings {
+        clockSettingsByModuleID[moduleID] ?? .default(isEnabled: true)
+    }
 
-        if !updated.use24Hour, updated.timezoneLabelStyle == .compact {
-            updated.timezoneLabelStyle = .short
+    func addClockModule(after moduleID: String?) {
+        guard clockModuleCount() < Self.maxClockModules else { return }
+
+        let sourceID = moduleID ?? "clock"
+        let sourceSettings = clockSettingsByModuleID[sourceID] ?? .default(isEnabled: true)
+        let newID = nextClockModuleID()
+
+        let newClock = ClockModule(
+            id: newID,
+            title: "Clock",
+            isEnabled: sourceSettings.isEnabled,
+            settings: sourceSettings
+        )
+
+        let insertIndex: Int
+        if let moduleID, let index = orderedModules.firstIndex(where: { $0.id == moduleID }) {
+            insertIndex = index + 1
+        } else {
+            insertIndex = 0
         }
 
-        if let clockEnabled = orderedModules.first(where: { $0.id == "clock" })?.isEnabled {
+        orderedModules.insert(newClock, at: insertIndex)
+        clockSettingsByModuleID[newID] = sourceSettings
+
+        Task {
+            await updateEngine.setModules(orderedModules)
+        }
+
+        statusEvents.send(.layoutChanged)
+        objectWillChange.send()
+    }
+
+    func canAddClockModule() -> Bool {
+        clockModuleCount() < Self.maxClockModules
+    }
+
+    func removeClockModule(id: String) {
+        guard id.hasPrefix("clock"), id != "clock" else { return }
+        guard let index = orderedModules.firstIndex(where: { $0.id == id }) else { return }
+
+        orderedModules.remove(at: index)
+        clockSettingsByModuleID.removeValue(forKey: id)
+
+        Task {
+            await updateEngine.setModules(orderedModules)
+        }
+
+        statusEvents.send(.layoutChanged)
+        objectWillChange.send()
+    }
+
+    func setModuleShowsValue(id: String, showsValue: Bool) {
+        guard let index = orderedModules.firstIndex(where: { $0.id == id }) else { return }
+        orderedModules[index].showsValue = showsValue
+        statusEvents.send(.layoutChanged)
+        objectWillChange.send()
+    }
+
+    func updateClockSettings(moduleID: String, _ mutate: (inout ClockSettings) -> Void) {
+        var updated = clockSettingsByModuleID[moduleID] ?? .default(isEnabled: true)
+        mutate(&updated)
+        updated.selectedTimezones = Array(updated.selectedTimezones.prefix(1))
+
+        if let clockEnabled = orderedModules.first(where: { $0.id == moduleID })?.isEnabled {
             updated.isEnabled = clockEnabled
         }
 
-        clockSettings = updated
-        syncClockModuleSettings()
+        clockSettingsByModuleID[moduleID] = updated
+
+        if let clockModule = orderedModules.first(where: { $0.id == moduleID }) as? ClockModule {
+            clockModule.applySettings(updated)
+        }
+
         statusEvents.send(.layoutChanged)
         objectWillChange.send()
     }
 
     func resetToDefaults() {
         orderedModules = AppState.defaultModules()
-        appearanceSettings = AppearanceSettings()
-        symbolSize = .standard
         overflowBehavior = .hideTrailing
-        clockSettings = .default(isEnabled: true)
-        syncClockModuleSettings()
+        clockSettingsByModuleID = ["clock": .default(isEnabled: true)]
 
         Task {
             await updateEngine.setModules(orderedModules)
@@ -147,14 +171,6 @@ final class AppState: ObservableObject {
 
         statusEvents.send(.layoutChanged)
         objectWillChange.send()
-    }
-
-    private func syncClockModuleSettings() {
-        guard let clockModule = orderedModules.first(where: { $0.id == "clock" }) as? ClockModule else {
-            return
-        }
-
-        clockModule.applySettings(clockSettings)
     }
 
     private func startEngine() {
@@ -169,11 +185,27 @@ final class AppState: ObservableObject {
 
     private static func defaultModules() -> [any MenuModule] {
         [
-            ClockModule(isEnabled: true, settings: .default(isEnabled: true)),
+            ClockModule(id: "clock", title: "Clock", isEnabled: true, settings: .default(isEnabled: true)),
             CPUModule(isEnabled: true),
             MemoryModule(isEnabled: true),
             NetworkModule(isEnabled: false),
             DiskUsageModule(isEnabled: false)
         ]
+    }
+
+    private func nextClockModuleID() -> String {
+        var index = 1
+        while orderedModules.contains(where: { $0.id == "clock.\(index)" }) {
+            index += 1
+        }
+        return "clock.\(index)"
+    }
+
+    private func clockModuleCount() -> Int {
+        orderedModules.reduce(into: 0) { count, module in
+            if module.id.hasPrefix("clock") {
+                count += 1
+            }
+        }
     }
 }

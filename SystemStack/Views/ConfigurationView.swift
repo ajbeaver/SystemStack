@@ -26,17 +26,6 @@ struct ConfigurationView: View {
         return filteredModules.first
     }
 
-    private var displayModeBinding: Binding<AppState.DisplayMode> {
-        Binding(
-            get: { appState.appearanceSettings.displayMode },
-            set: { value in
-                var settings = appState.appearanceSettings
-                settings.displayMode = value
-                appState.appearanceSettings = settings
-            }
-        )
-    }
-
     var body: some View {
         VStack(spacing: 10) {
             Picker("", selection: $topTab) {
@@ -152,20 +141,6 @@ struct ConfigurationView: View {
             VStack(alignment: .leading, spacing: 14) {
                 GroupBox("Layout") {
                     VStack(alignment: .leading, spacing: 10) {
-                        Picker("Display Mode", selection: displayModeBinding) {
-                            ForEach(AppState.DisplayMode.allCases) { mode in
-                                Text(mode.title).tag(mode)
-                            }
-                        }
-                        .pickerStyle(.segmented)
-
-                        Picker("Symbol Size", selection: $appState.symbolSize) {
-                            ForEach(AppState.SymbolSize.allCases) { size in
-                                Text(size.rawValue).tag(size)
-                            }
-                        }
-                        .pickerStyle(.segmented)
-
                         Picker("Overflow Behavior", selection: $appState.overflowBehavior) {
                             ForEach(AppState.OverflowBehavior.allCases) { behavior in
                                 Text(behavior.rawValue).tag(behavior)
@@ -212,18 +187,23 @@ struct ConfigurationView: View {
 
     @ViewBuilder
     private func moduleSettingsView(for module: any MenuModule) -> some View {
-        if module.id == "clock" {
-            ClockModuleSettingsView()
-        } else {
-            EmptyView()
+        VStack(alignment: .leading, spacing: 10) {
+            Toggle("Show Value", isOn: Binding(
+                get: { module.showsValue },
+                set: { appState.setModuleShowsValue(id: module.id, showsValue: $0) }
+            ))
+
+            if module.id.hasPrefix("clock") {
+                ClockModuleSettingsView(moduleID: module.id)
+            }
         }
     }
 }
 
 private struct ClockModuleSettingsView: View {
     @EnvironmentObject private var appState: AppState
+    let moduleID: String
     @State private var customTimezoneSearch = ""
-    @State private var worldTimezoneSearch = ""
 
     private let allTimezones: [String] = {
         TimeZone.knownTimeZoneIdentifiers.sorted { lhs, rhs in
@@ -237,64 +217,50 @@ private struct ClockModuleSettingsView: View {
     }()
 
     var body: some View {
+        let settings = appState.clockSettings(for: moduleID)
+
         VStack(alignment: .leading, spacing: 10) {
             Toggle("Use 24-Hour Time", isOn: Binding(
-                get: { appState.clockSettings.use24Hour },
+                get: { appState.clockSettings(for: moduleID).use24Hour },
                 set: { value in
-                    appState.updateClockSettings { settings in
+                    appState.updateClockSettings(moduleID: moduleID) { settings in
                         settings.use24Hour = value
                     }
                 }
             ))
 
             Toggle("Show Seconds", isOn: Binding(
-                get: { appState.clockSettings.showSeconds },
+                get: { appState.clockSettings(for: moduleID).showSeconds },
                 set: { value in
-                    appState.updateClockSettings { settings in
+                    appState.updateClockSettings(moduleID: moduleID) { settings in
                         settings.showSeconds = value
                     }
                 }
             ))
 
             Toggle("Show AM/PM", isOn: Binding(
-                get: { appState.clockSettings.showAMPM },
+                get: { appState.clockSettings(for: moduleID).showAMPM },
                 set: { value in
-                    appState.updateClockSettings { settings in
+                    appState.updateClockSettings(moduleID: moduleID) { settings in
                         settings.showAMPM = value
                     }
                 }
             ))
-            .disabled(appState.clockSettings.use24Hour)
+            .disabled(settings.use24Hour)
 
             Toggle("Show Timezone Label", isOn: Binding(
-                get: { appState.clockSettings.showTimezoneLabel },
+                get: { appState.clockSettings(for: moduleID).showTimezoneLabel },
                 set: { value in
-                    appState.updateClockSettings { settings in
+                    appState.updateClockSettings(moduleID: moduleID) { settings in
                         settings.showTimezoneLabel = value
                     }
                 }
             ))
 
-            Picker("Timezone Label Style", selection: Binding(
-                get: { appState.clockSettings.timezoneLabelStyle },
-                set: { value in
-                    appState.updateClockSettings { settings in
-                        settings.timezoneLabelStyle = value
-                    }
-                }
-            )) {
-                Text("Short (UTC)").tag(TimezoneLabelStyle.short)
-                Text("Compact (Z)")
-                    .tag(TimezoneLabelStyle.compact)
-                    .disabled(!appState.clockSettings.use24Hour)
-            }
-            .pickerStyle(.segmented)
-            .disabled(!appState.clockSettings.showTimezoneLabel)
-
             Picker("Timezone Mode", selection: Binding(
-                get: { appState.clockSettings.timezoneMode },
+                get: { appState.clockSettings(for: moduleID).timezoneMode },
                 set: { value in
-                    appState.updateClockSettings { settings in
+                    appState.updateClockSettings(moduleID: moduleID) { settings in
                         settings.timezoneMode = value
                     }
                 }
@@ -302,69 +268,45 @@ private struct ClockModuleSettingsView: View {
                 Text("System").tag(TimezoneMode.system)
                 Text("UTC").tag(TimezoneMode.utc)
                 Text("Custom").tag(TimezoneMode.custom)
-                Text("World").tag(TimezoneMode.world)
             }
             .pickerStyle(.segmented)
 
-            if appState.clockSettings.timezoneMode == .custom {
+            if settings.timezoneMode == .custom {
                 VStack(alignment: .leading, spacing: 8) {
                     TextField("Search timezones", text: $customTimezoneSearch)
                         .textFieldStyle(.roundedBorder)
 
-                    ScrollView {
-                        LazyVStack(alignment: .leading, spacing: 4) {
-                            ForEach(filteredTimezones(search: customTimezoneSearch), id: \.self) { timezoneID in
-                                Button {
-                                    appState.updateClockSettings { settings in
-                                        settings.selectedTimezones = [timezoneID]
-                                    }
-                                } label: {
-                                    HStack(spacing: 8) {
-                                        Image(systemName: appState.clockSettings.selectedTimezones.first == timezoneID ? "checkmark.circle.fill" : "circle")
-                                            .foregroundStyle(.secondary)
-                                        Text(timezoneDisplayName(timezoneID))
-                                            .foregroundStyle(.primary)
-                                            .lineLimit(1)
-                                    }
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                }
-                                .buttonStyle(.plain)
-                            }
-                        }
+                    Button {
+                        appState.addClockModule(after: moduleID)
+                    } label: {
+                        Label("Add Clock", systemImage: "plus")
                     }
+                    .buttonStyle(.plain)
+                    .disabled(!appState.canAddClockModule())
+
+                    if !appState.canAddClockModule() {
+                        Text("Maximum of \(AppState.maxClockModules) clocks reached.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    timezoneResultsView(
+                        search: customTimezoneSearch
+                    )
                     .frame(height: 120)
                 }
             }
 
-            if appState.clockSettings.timezoneMode == .world {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Select up to 4 timezones")
-                        .foregroundStyle(.secondary)
+            if moduleID != "clock" {
+                Divider()
+                    .padding(.top, 4)
 
-                    TextField("Search timezones", text: $worldTimezoneSearch)
-                        .textFieldStyle(.roundedBorder)
-
-                    ScrollView {
-                        LazyVStack(alignment: .leading, spacing: 4) {
-                            ForEach(filteredTimezones(search: worldTimezoneSearch), id: \.self) { timezoneID in
-                                Button {
-                                    toggleWorldTimezone(timezoneID)
-                                } label: {
-                                    HStack(spacing: 8) {
-                                        Image(systemName: isWorldSelected(timezoneID) ? "checkmark.circle.fill" : "circle")
-                                            .foregroundStyle(.secondary)
-                                        Text(timezoneDisplayName(timezoneID))
-                                            .foregroundStyle(.primary)
-                                            .lineLimit(1)
-                                    }
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                }
-                                .buttonStyle(.plain)
-                            }
-                        }
-                    }
-                    .frame(height: 140)
+                Button(role: .destructive) {
+                    appState.removeClockModule(id: moduleID)
+                } label: {
+                    Label("Delete Clock", systemImage: "trash")
                 }
+                .buttonStyle(.plain)
             }
         }
         .font(.subheadline)
@@ -377,7 +319,7 @@ private struct ClockModuleSettingsView: View {
 
     private func filteredTimezones(search: String) -> [String] {
         let trimmed = search.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return Array(allTimezones.prefix(120)) }
+        guard !trimmed.isEmpty else { return [] }
 
         return allTimezones.filter { id in
             let lowered = trimmed.lowercased()
@@ -387,23 +329,58 @@ private struct ClockModuleSettingsView: View {
             let localized = TimeZone(identifier: id)?.localizedName(for: .standard, locale: .autoupdatingCurrent) ?? ""
             return localized.lowercased().contains(lowered)
         }
-        .prefix(120)
+        .prefix(80)
         .map { $0 }
     }
 
-    private func isWorldSelected(_ id: String) -> Bool {
-        appState.clockSettings.selectedTimezones.contains(id)
+    @ViewBuilder
+    private func timezoneResultsView(search: String) -> some View {
+        let trimmed = search.trimmingCharacters(in: .whitespacesAndNewlines)
+        let results = filteredTimezones(search: search)
+
+        if trimmed.isEmpty {
+            EmptyView()
+        } else if results.isEmpty {
+            Text("No matching timezones.")
+                .foregroundStyle(.secondary)
+        } else {
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 4) {
+                    ForEach(results, id: \.self) { timezoneID in
+                        quickPickButton(
+                            timezoneID: timezoneID,
+                            title: timezoneDisplayName(timezoneID)
+                        )
+                    }
+                }
+            }
+        }
     }
 
-    private func toggleWorldTimezone(_ id: String) {
-        appState.updateClockSettings { settings in
-            var selected = settings.selectedTimezones
-            if let index = selected.firstIndex(of: id) {
-                selected.remove(at: index)
-            } else if selected.count < 4 {
-                selected.append(id)
+    @ViewBuilder
+    private func quickPickButton(timezoneID: String, title: String) -> some View {
+        Button {
+            selectCustomTimezone(timezoneID)
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: isCustomSelected(timezoneID) ? "checkmark.circle.fill" : "circle")
+                    .foregroundStyle(.secondary)
+                Text(title)
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
             }
-            settings.selectedTimezones = selected
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func isCustomSelected(_ id: String) -> Bool {
+        appState.clockSettings(for: moduleID).selectedTimezones.contains(id)
+    }
+
+    private func selectCustomTimezone(_ id: String) {
+        appState.updateClockSettings(moduleID: moduleID) { settings in
+            settings.selectedTimezones = [id]
         }
     }
 }
