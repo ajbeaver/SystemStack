@@ -160,7 +160,7 @@ final class StatusBarController: NSObject {
             button.title = image == nil ? value : ""
         }
 
-        button.toolTip = "\(moduleShortLabel(for: module)) \(value)"
+        button.toolTip = tooltipText(for: module, value: value)
     }
 
     private func moduleImage(for module: BaseMenuModule) -> NSImage? {
@@ -200,6 +200,13 @@ final class StatusBarController: NSObject {
         default:
             return appState.title(for: module)
         }
+    }
+
+    private func tooltipText(for module: BaseMenuModule, value: String) -> String {
+        if let cpu = module as? CPUModule {
+            return cpu.hoverText
+        }
+        return "\(moduleShortLabel(for: module)) \(value)"
     }
 
     private func hideTrailingUntilFits(_ modules: [BaseMenuModule], forceHideValues: Bool) {

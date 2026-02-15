@@ -195,8 +195,27 @@ struct ConfigurationView: View {
 
             if module.id.hasPrefix("clock") {
                 ClockModuleSettingsView(moduleID: module.id)
+            } else if module.id == "cpu" {
+                CPUHoverSettingsView(moduleID: module.id)
             }
         }
+    }
+}
+
+private struct CPUHoverSettingsView: View {
+    @EnvironmentObject private var appState: AppState
+    let moduleID: String
+
+    var body: some View {
+        Picker("Hover Mode", selection: Binding(
+            get: { appState.cpuHoverMode(id: moduleID) },
+            set: { appState.setCPUHoverMode(id: moduleID, mode: $0) }
+        )) {
+            ForEach(CPUModule.HoverMode.allCases) { mode in
+                Text(mode.rawValue).tag(mode)
+            }
+        }
+        .pickerStyle(.menu)
     }
 }
 

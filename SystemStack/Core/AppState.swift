@@ -141,6 +141,20 @@ final class AppState: ObservableObject {
         objectWillChange.send()
     }
 
+    func cpuHoverMode(id: String) -> CPUModule.HoverMode {
+        guard let cpu = orderedModules.first(where: { $0.id == id }) as? CPUModule else {
+            return .percentage
+        }
+        return cpu.hoverMode
+    }
+
+    func setCPUHoverMode(id: String, mode: CPUModule.HoverMode) {
+        guard let cpu = orderedModules.first(where: { $0.id == id }) as? CPUModule else { return }
+        cpu.hoverMode = mode
+        statusEvents.send(.valuesChanged)
+        objectWillChange.send()
+    }
+
     func updateClockSettings(moduleID: String, _ mutate: (inout ClockSettings) -> Void) {
         var updated = clockSettingsByModuleID[moduleID] ?? .default(isEnabled: true)
         mutate(&updated)
