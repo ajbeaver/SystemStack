@@ -16,11 +16,6 @@ struct PopoverView: View {
                 .font(.system(.body, design: .monospaced))
 
             HStack {
-                Button("Open Configuration") {
-                    appState.openConfigurationWindow()
-                }
-                .buttonStyle(.borderedProminent)
-
                 Button("Quit") {
                     NSApp.terminate(nil)
                 }

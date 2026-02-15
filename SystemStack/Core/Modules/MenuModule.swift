@@ -1,27 +1,67 @@
+import AppKit
 import Foundation
 
-protocol MenuModule {
+protocol MenuModule: AnyObject, Sendable {
     var id: String { get }
-    var title: String { get }
     var symbolName: String? { get }
     var isEnabled: Bool { get set }
-    func statusValueText() -> String
+    var displayValue: String { get }
+    func update() async -> Bool
 }
 
-class BaseStubModule: MenuModule {
+protocol TitledMenuModule: MenuModule {
+    var title: String { get }
+}
+
+class BaseMenuModule: TitledMenuModule, @unchecked Sendable {
     let id: String
     let title: String
     let symbolName: String?
-    var isEnabled: Bool
 
-    init(id: String, title: String, symbolName: String?, isEnabled: Bool = false) {
+    @MainActor var statusItem: NSStatusItem?
+
+    private let stateLock = NSLock()
+    private var enabled: Bool
+    private var value: String
+
+    init(id: String, title: String, symbolName: String?, isEnabled: Bool = false, defaultDisplayValue: String = "—") {
         self.id = id
         self.title = title
         self.symbolName = symbolName
-        self.isEnabled = isEnabled
+        self.enabled = isEnabled
+        self.value = defaultDisplayValue
     }
 
-    func statusValueText() -> String {
-        "--"
+    var isEnabled: Bool {
+        get {
+            stateLock.lock()
+            defer { stateLock.unlock() }
+            return enabled
+        }
+        set {
+            stateLock.lock()
+            enabled = newValue
+            stateLock.unlock()
+        }
+    }
+
+    var displayValue: String {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        return value
+    }
+
+    func update() async -> Bool {
+        setDisplayValueIfChanged("—")
+    }
+
+    @discardableResult
+    func setDisplayValueIfChanged(_ newValue: String) -> Bool {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+
+        guard value != newValue else { return false }
+        value = newValue
+        return true
     }
 }

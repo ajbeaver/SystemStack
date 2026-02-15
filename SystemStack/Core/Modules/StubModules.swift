@@ -1,70 +1,54 @@
 import Foundation
 
-final class CalendarModule: BaseStubModule {
+final class CalendarModule: BaseMenuModule, @unchecked Sendable {
     init(isEnabled: Bool = false) { super.init(id: "calendar", title: "Calendar", symbolName: "calendar", isEnabled: isEnabled) }
 }
 
-final class CPUUsageModule: BaseStubModule {
-    init(isEnabled: Bool = true) { super.init(id: "cpu", title: "CPU", symbolName: "cpu", isEnabled: isEnabled) }
-
-    override func statusValueText() -> String { "0%" }
-}
-
-final class MemoryModule: BaseStubModule {
-    init(isEnabled: Bool = true) { super.init(id: "memory", title: "Memory", symbolName: "memorychip", isEnabled: isEnabled) }
-
-    override func statusValueText() -> String { "0G" }
-}
-
-final class DiskUsageModule: BaseStubModule {
-    init(isEnabled: Bool = false) { super.init(id: "disk", title: "Disk", symbolName: "internaldrive", isEnabled: isEnabled) }
-}
-
-final class NowPlayingModule: BaseStubModule {
+final class NowPlayingModule: BaseMenuModule, @unchecked Sendable {
     init(isEnabled: Bool = false) { super.init(id: "nowPlaying", title: "Now Playing", symbolName: "music.note", isEnabled: isEnabled) }
 }
 
-final class FocusModeModule: BaseStubModule {
+final class FocusModeModule: BaseMenuModule, @unchecked Sendable {
     init(isEnabled: Bool = false) { super.init(id: "focus", title: "Focus", symbolName: "moon", isEnabled: isEnabled) }
 }
 
-final class VPNModule: BaseStubModule {
+final class VPNModule: BaseMenuModule, @unchecked Sendable {
     init(isEnabled: Bool = false) { super.init(id: "vpn", title: "VPN", symbolName: "lock.shield", isEnabled: isEnabled) }
 }
 
-final class BluetoothModule: BaseStubModule {
+final class BluetoothModule: BaseMenuModule, @unchecked Sendable {
     init(isEnabled: Bool = false) { super.init(id: "bluetooth", title: "Bluetooth", symbolName: "bluetooth", isEnabled: isEnabled) }
 }
 
-final class NotificationsCountModule: BaseStubModule {
+final class NotificationsCountModule: BaseMenuModule, @unchecked Sendable {
     init(isEnabled: Bool = false) { super.init(id: "notifications", title: "Notifications", symbolName: "bell.badge", isEnabled: isEnabled) }
 }
 
-final class WeatherModule: BaseStubModule {
+final class WeatherModule: BaseMenuModule, @unchecked Sendable {
     init(isEnabled: Bool = false) { super.init(id: "weather", title: "Weather", symbolName: "cloud.sun", isEnabled: isEnabled) }
 }
 
-final class QuickActionsModule: BaseStubModule {
+final class QuickActionsModule: BaseMenuModule, @unchecked Sendable {
     init(isEnabled: Bool = false) { super.init(id: "quickActions", title: "Quick Actions", symbolName: "bolt", isEnabled: isEnabled) }
 }
 
-final class TimerModule: BaseStubModule {
+final class TimerModule: BaseMenuModule, @unchecked Sendable {
     init(isEnabled: Bool = false) { super.init(id: "timer", title: "Timer", symbolName: "timer", isEnabled: isEnabled) }
 }
 
-final class ClipboardModule: BaseStubModule {
+final class ClipboardModule: BaseMenuModule, @unchecked Sendable {
     init(isEnabled: Bool = false) { super.init(id: "clipboard", title: "Clipboard", symbolName: "doc.on.clipboard", isEnabled: isEnabled) }
 }
 
-final class CustomTextModule: BaseStubModule {
+final class CustomTextModule: BaseMenuModule, @unchecked Sendable {
     var customValue: String
 
-    init(isEnabled: Bool = false, customValue: String = "--") {
+    init(isEnabled: Bool = false, customValue: String = "—") {
         self.customValue = customValue
-        super.init(id: "customText", title: "Custom Text", symbolName: "text.cursor", isEnabled: isEnabled)
+        super.init(id: "customText", title: "Custom Text", symbolName: "text.cursor", isEnabled: isEnabled, defaultDisplayValue: customValue)
     }
 
-    override func statusValueText() -> String {
-        customValue
+    override func update() async -> Bool {
+        setDisplayValueIfChanged(customValue)
     }
 }

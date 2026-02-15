@@ -1,4 +1,4 @@
-import AppKit
+import Combine
 import SwiftUI
 
 final class AppState: ObservableObject {
@@ -27,6 +27,7 @@ final class AppState: ObservableObject {
     enum SpacingMode: String, CaseIterable, Identifiable {
         case compact = "Compact"
         case normal = "Normal"
+        case wide = "Wide"
 
         var id: String { rawValue }
 
@@ -36,6 +37,8 @@ final class AppState: ObservableObject {
                 return " "
             case .normal:
                 return "  "
+            case .wide:
+                return "   "
             }
         }
     }
@@ -87,65 +90,140 @@ final class AppState: ObservableObject {
         var spacing: SpacingMode = .normal
     }
 
+    enum SymbolSize: String, CaseIterable, Identifiable {
+        case small = "Small"
+        case standard = "Standard"
+
+        var id: String { rawValue }
+    }
+
+    enum OverflowBehavior: String, CaseIterable, Identifiable {
+        case hideTrailing = "Hide Trailing"
+        case iconOnlyFallback = "Icon Only Fallback"
+
+        var id: String { rawValue }
+    }
+
+    enum ExplicitAppearance: String, CaseIterable, Identifiable {
+        case light = "Light"
+        case dark = "Dark"
+
+        var id: String { rawValue }
+    }
+
+    enum HoverVerbosity: String, CaseIterable, Identifiable {
+        case compact = "Compact"
+        case verbose = "Verbose"
+
+        var id: String { rawValue }
+    }
+
+    enum ClickBehavior: String, CaseIterable, Identifiable {
+        case openConfiguration = "Open Configuration"
+        case showMenu = "Show Menu"
+
+        var id: String { rawValue }
+    }
+
+    enum RefreshRate: String, CaseIterable, Identifiable {
+        case oneSecond = "1s"
+        case twoSeconds = "2s"
+        case fiveSeconds = "5s"
+
+        var id: String { rawValue }
+    }
+
+    enum StatusEvent {
+        case valuesChanged
+        case layoutChanged
+    }
+
     static let shared = AppState()
+
+    let statusEvents = PassthroughSubject<StatusEvent, Never>()
 
     @Published var selectedSection: SidebarSection? = .modules
     @Published private(set) var orderedModules: [any MenuModule] = AppState.defaultModules()
-    @Published var appearanceSettings = AppearanceSettings()
+    @Published var appearanceSettings = AppearanceSettings() {
+        didSet {
+            statusEvents.send(.layoutChanged)
+        }
+    }
     @Published var launchAtLogin = false
+    @Published var symbolSize: SymbolSize = .standard {
+        didSet {
+            statusEvents.send(.layoutChanged)
+        }
+    }
+    @Published var overflowBehavior: OverflowBehavior = .hideTrailing {
+        didSet {
+            statusEvents.send(.layoutChanged)
+        }
+    }
+    @Published var followSystemAppearance = true
+    @Published var explicitAppearance: ExplicitAppearance = .light
+    @Published var hoverVerbosity: HoverVerbosity = .compact
+    @Published var showTooltips = true
+    @Published var clickBehavior: ClickBehavior = .openConfiguration
+    @Published var refreshRate: RefreshRate = .oneSecond
+    @Published var reduceRefreshWhenIdle = true
+    @Published var hideDockIcon = false
 
-    @Published var clockUse24Hour = ClockModule.defaultUse24Hour()
-    @Published var clockShowSeconds = false
+    @Published var clockSettings = ClockSettings.default(isEnabled: true)
 
-    private var configurationWindowController: NSWindowController?
+    private let updateEngine = UpdateEngine()
+
+    init() {
+        syncClockModuleSettings()
+        startEngine()
+    }
+
+    deinit {
+        let engine = updateEngine
+        Task {
+            await engine.stop()
+        }
+    }
 
     var enabledModules: [any MenuModule] {
         orderedModules.filter { $0.isEnabled }
     }
 
-    func openConfigurationWindow() {
-        if let window = configurationWindowController?.window {
-            window.makeKeyAndOrderFront(nil)
-            NSApp.activate(ignoringOtherApps: true)
-            return
+    func title(for module: any MenuModule) -> String {
+        if let titled = module as? any TitledMenuModule {
+            return titled.title
         }
 
-        let rootView = ConfigurationView()
-            .environmentObject(self)
-
-        let hostingController = NSHostingController(rootView: rootView)
-        let window = NSWindow(contentViewController: hostingController)
-        window.title = "SystemStack Configuration"
-        window.styleMask.insert(.resizable)
-        window.setContentSize(NSSize(width: 980, height: 640))
-        window.minSize = NSSize(width: 780, height: 520)
-        window.toolbarStyle = .automatic
-
-        let controller = NSWindowController(window: window)
-        configurationWindowController = controller
-        NotificationCenter.default.addObserver(
-            forName: NSWindow.willCloseNotification,
-            object: window,
-            queue: .main
-        ) { [weak self] _ in
-            self?.configurationWindowController = nil
-        }
-
-        controller.showWindow(nil)
-        NSApp.activate(ignoringOtherApps: true)
+        return module.id.capitalized
     }
 
     func modules(matching query: String) -> [any MenuModule] {
         let text = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return orderedModules }
+
         return orderedModules.filter { module in
-            module.title.localizedCaseInsensitiveContains(text)
+            let titleText = title(for: module)
+            return titleText.localizedCaseInsensitiveContains(text)
+                || module.id.localizedCaseInsensitiveContains(text)
         }
     }
 
     func setModuleEnabled(id: String, isEnabled: Bool) {
         guard let index = orderedModules.firstIndex(where: { $0.id == id }) else { return }
         orderedModules[index].isEnabled = isEnabled
+
+        if id == "clock" {
+            var updated = clockSettings
+            updated.isEnabled = isEnabled
+            clockSettings = updated
+            syncClockModuleSettings()
+        }
+
+        Task {
+            await updateEngine.setModules(orderedModules)
+        }
+
+        statusEvents.send(.layoutChanged)
         objectWillChange.send()
     }
 
@@ -159,6 +237,12 @@ final class AppState: ObservableObject {
         let moved = orderedModules.remove(at: sourceIndex)
         let destinationIndex = sourceIndex < targetIndex ? targetIndex - 1 : targetIndex
         orderedModules.insert(moved, at: destinationIndex)
+
+        Task {
+            await updateEngine.setModules(orderedModules)
+        }
+
+        statusEvents.send(.layoutChanged)
         objectWillChange.send()
     }
 
@@ -166,22 +250,26 @@ final class AppState: ObservableObject {
         setModuleEnabled(id: id, isEnabled: false)
     }
 
-    func updateClockSettings(use24Hour: Bool? = nil, showSeconds: Bool? = nil) {
-        if let use24Hour {
-            clockUse24Hour = use24Hour
+    func updateClockSettings(_ mutate: (inout ClockSettings) -> Void) {
+        var updated = clockSettings
+        mutate(&updated)
+        updated.selectedTimezones = Array(updated.selectedTimezones.prefix(4))
+        if !updated.use24Hour, updated.timezoneLabelStyle == .compact {
+            updated.timezoneLabelStyle = .short
         }
 
-        if let showSeconds {
-            clockShowSeconds = showSeconds
+        if let clockEnabled = orderedModules.first(where: { $0.id == "clock" })?.isEnabled {
+            updated.isEnabled = clockEnabled
         }
 
+        clockSettings = updated
         syncClockModuleSettings()
+        statusEvents.send(.layoutChanged)
         objectWillChange.send()
     }
 
     func refreshStatusValues() {
-        syncClockModuleSettings()
-        objectWillChange.send()
+        statusEvents.send(.valuesChanged)
     }
 
     func resetToDefaults() {
@@ -189,9 +277,24 @@ final class AppState: ObservableObject {
         orderedModules = AppState.defaultModules()
         appearanceSettings = AppearanceSettings()
         launchAtLogin = false
-        clockUse24Hour = ClockModule.defaultUse24Hour()
-        clockShowSeconds = false
+        symbolSize = .standard
+        overflowBehavior = .hideTrailing
+        followSystemAppearance = true
+        explicitAppearance = .light
+        hoverVerbosity = .compact
+        showTooltips = true
+        clickBehavior = .openConfiguration
+        refreshRate = .oneSecond
+        reduceRefreshWhenIdle = true
+        hideDockIcon = false
+        clockSettings = .default(isEnabled: true)
         syncClockModuleSettings()
+
+        Task {
+            await updateEngine.setModules(orderedModules)
+        }
+
+        statusEvents.send(.layoutChanged)
         objectWillChange.send()
     }
 
@@ -209,12 +312,12 @@ final class AppState: ObservableObject {
             case .iconOnly:
                 return module.symbolName == nil ? "[ ]" : "[*]"
             case .valueOnly:
-                return module.statusValueText()
+                return module.displayValue
             case .iconAndValue:
                 if module.symbolName == nil {
-                    return module.statusValueText()
+                    return module.displayValue
                 }
-                return "[*] \(module.statusValueText())"
+                return "[*] \(module.displayValue)"
             }
         }
 
@@ -227,17 +330,26 @@ final class AppState: ObservableObject {
             return
         }
 
-        clockModule.use24Hour = clockUse24Hour
-        clockModule.showSeconds = clockShowSeconds
+        clockModule.applySettings(clockSettings)
+    }
+
+    private func startEngine() {
+        let statusEvents = self.statusEvents
+        Task {
+            await updateEngine.setModules(orderedModules)
+            await updateEngine.start {
+                statusEvents.send(.valuesChanged)
+            }
+        }
     }
 
     private static func defaultModules() -> [any MenuModule] {
         [
-            ClockModule(isEnabled: true),
+            ClockModule(isEnabled: true, settings: .default(isEnabled: true)),
             CalendarModule(),
             BatteryModule(),
             NetworkModule(),
-            CPUUsageModule(isEnabled: true),
+            CPUModule(isEnabled: true),
             MemoryModule(isEnabled: true),
             DiskUsageModule(),
             NowPlayingModule(),
