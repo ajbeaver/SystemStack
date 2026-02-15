@@ -5,30 +5,27 @@ import SwiftUI
 @MainActor
 final class StatusBarController: NSObject {
     private let appState: AppState
-    private let popover = NSPopover()
+    private let modulePopover = NSPopover()
     private let contextMenu = NSMenu()
 
     private var cancellables = Set<AnyCancellable>()
     private var cachedSymbolImages: [String: NSImage] = [:]
     private var lastOrderKey = ""
-    private weak var activeAnchorButton: NSStatusBarButton?
+    private var activePopoverModuleID: String?
+    private var configurationWindowController: NSWindowController?
 
     init(appState: AppState) {
         self.appState = appState
         super.init()
-        configurePopover()
+        configureModulePopover()
         configureContextMenu()
         observeState()
         syncStatusItems(rebuildOrder: true)
     }
 
-    private func configurePopover() {
-        popover.behavior = .transient
-        popover.animates = true
-        popover.contentSize = NSSize(width: 520, height: 560)
-        popover.contentViewController = NSHostingController(
-            rootView: ConfigurationView().environmentObject(appState)
-        )
+    private func configureModulePopover() {
+        modulePopover.behavior = .transient
+        modulePopover.animates = true
     }
 
     private func configureContextMenu() {
@@ -108,6 +105,7 @@ final class StatusBarController: NSObject {
 
     private func updateVisibleModuleItems() {
         renderLayout()
+        refreshActiveModulePopover()
     }
 
     private func renderLayout() {
@@ -159,8 +157,7 @@ final class StatusBarController: NSObject {
             button.image = image
             button.title = image == nil ? value : ""
         }
-
-        button.toolTip = tooltipText(for: module, value: value)
+        button.toolTip = nil
     }
 
     private func moduleImage(for module: BaseMenuModule) -> NSImage? {
@@ -200,13 +197,6 @@ final class StatusBarController: NSObject {
         default:
             return appState.title(for: module)
         }
-    }
-
-    private func tooltipText(for module: BaseMenuModule, value: String) -> String {
-        if let cpu = module as? CPUModule {
-            return cpu.hoverText
-        }
-        return "\(moduleShortLabel(for: module)) \(value)"
     }
 
     private func hideTrailingUntilFits(_ modules: [BaseMenuModule], forceHideValues: Bool) {
@@ -267,29 +257,26 @@ final class StatusBarController: NSObject {
             return
         }
 
-        activeAnchorButton = button
-
         if event.type == .rightMouseUp {
             NSMenu.popUpContextMenu(contextMenu, with: event, for: button)
             return
         }
 
-        if popover.isShown {
-            popover.performClose(sender)
-        } else {
-            popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
-            NSApp.activate(ignoringOtherApps: true)
-        }
-    }
+        guard let module = moduleFor(button: button) else { return }
 
-    @objc private func openConfiguration() {
-        if popover.isShown {
-            popover.performClose(nil)
+        if modulePopover.isShown, activePopoverModuleID == module.id {
+            modulePopover.performClose(sender)
+            activePopoverModuleID = nil
             return
         }
 
-        guard let button = activeAnchorButton ?? firstVisibleButton() else { return }
-        popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+        showModulePopover(for: module, anchorButton: button)
+    }
+
+    @objc private func openConfiguration() {
+        showConfigurationWindow()
+        modulePopover.performClose(nil)
+        activePopoverModuleID = nil
         NSApp.activate(ignoringOtherApps: true)
     }
 
@@ -305,5 +292,112 @@ final class StatusBarController: NSObject {
 
     @objc private func quitApp() {
         NSApp.terminate(nil)
+    }
+
+    private func moduleFor(button: NSStatusBarButton) -> BaseMenuModule? {
+        guard let identifier = button.identifier?.rawValue else { return nil }
+        return appState.orderedModules.first(where: { $0.id == identifier }) as? BaseMenuModule
+    }
+
+    private func showModulePopover(for module: BaseMenuModule, anchorButton: NSStatusBarButton) {
+        activePopoverModuleID = module.id
+        let rootView = ModuleDetailPopoverView(
+            title: appState.title(for: module),
+            value: module.displayValue.isEmpty ? "—" : module.displayValue,
+            detail: moduleDetailText(for: module),
+            openConfiguration: { [weak self] in
+                self?.openConfiguration()
+            },
+            quitApp: { [weak self] in
+                self?.quitApp()
+            }
+        )
+        .environmentObject(appState)
+
+        modulePopover.contentSize = NSSize(width: 280, height: 180)
+        modulePopover.contentViewController = NSHostingController(rootView: rootView)
+        modulePopover.show(relativeTo: anchorButton.bounds, of: anchorButton, preferredEdge: .minY)
+    }
+
+    private func refreshActiveModulePopover() {
+        guard modulePopover.isShown,
+              let moduleID = activePopoverModuleID,
+              let module = appState.orderedModules.first(where: { $0.id == moduleID }) as? BaseMenuModule,
+              let button = module.statusItem?.button else {
+            return
+        }
+
+        showModulePopover(for: module, anchorButton: button)
+    }
+
+    private func moduleDetailText(for module: BaseMenuModule) -> String {
+        if let cpu = module as? CPUModule {
+            return cpu.hoverText
+        }
+        return "\(moduleShortLabel(for: module)) \(module.displayValue.isEmpty ? "—" : module.displayValue)"
+    }
+
+    private func showConfigurationWindow() {
+        let windowController: NSWindowController
+        if let existing = configurationWindowController, let window = existing.window {
+            windowController = existing
+            window.makeKeyAndOrderFront(nil)
+            return
+        }
+
+        let rootView = ConfigurationView().environmentObject(appState)
+        let hostingController = NSHostingController(rootView: rootView)
+
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 520, height: 560),
+            styleMask: [.titled, .closable, .miniaturizable],
+            backing: .buffered,
+            defer: false
+        )
+        window.title = "SystemStack Configuration"
+        window.contentViewController = hostingController
+        window.center()
+        window.isReleasedWhenClosed = false
+        window.level = .normal
+
+        windowController = NSWindowController(window: window)
+        configurationWindowController = windowController
+        windowController.showWindow(nil)
+    }
+}
+
+private struct ModuleDetailPopoverView: View {
+    let title: String
+    let value: String
+    let detail: String
+    let openConfiguration: () -> Void
+    let quitApp: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(title)
+                .font(.headline)
+
+            Text(value)
+                .font(.title3)
+                .fontWeight(.semibold)
+
+            Text(detail)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .lineLimit(3)
+
+            Spacer(minLength: 4)
+
+            Divider()
+
+            HStack {
+                Button("Open Configuration", action: openConfiguration)
+                Spacer()
+                Button("Quit SystemStack", action: quitApp)
+            }
+        }
+        .padding(12)
+        .frame(width: 280, height: 180, alignment: .topLeading)
     }
 }
