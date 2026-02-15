@@ -259,22 +259,12 @@ private actor ClockRuntime {
 final class ClockModule: BaseMenuModule, @unchecked Sendable {
     private let runtime: ClockRuntime
 
-    private let showSecondsLock = NSLock()
-    private var showSecondsValue: Bool
-
     private var timezoneObserver: NSObjectProtocol?
     private var localeObserver: NSObjectProtocol?
-
-    var showSeconds: Bool {
-        showSecondsLock.lock()
-        defer { showSecondsLock.unlock() }
-        return showSecondsValue
-    }
 
     init(isEnabled: Bool = true, settings: ClockSettings? = nil) {
         let resolved = settings ?? .default(isEnabled: isEnabled)
         self.runtime = ClockRuntime(settings: resolved)
-        self.showSecondsValue = resolved.showSeconds
 
         super.init(id: "clock", title: "Clock", symbolName: "clock", isEnabled: isEnabled, defaultDisplayValue: "—")
 
@@ -296,10 +286,6 @@ final class ClockModule: BaseMenuModule, @unchecked Sendable {
         normalized.selectedTimezones = Array(normalized.selectedTimezones.prefix(4))
 
         isEnabled = normalized.isEnabled
-
-        showSecondsLock.lock()
-        showSecondsValue = normalized.showSeconds
-        showSecondsLock.unlock()
 
         Task {
             await runtime.applySettings(normalized)

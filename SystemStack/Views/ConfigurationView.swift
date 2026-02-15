@@ -26,6 +26,17 @@ struct ConfigurationView: View {
         return filteredModules.first
     }
 
+    private var displayModeBinding: Binding<AppState.DisplayMode> {
+        Binding(
+            get: { appState.appearanceSettings.displayMode },
+            set: { value in
+                var settings = appState.appearanceSettings
+                settings.displayMode = value
+                appState.appearanceSettings = settings
+            }
+        )
+    }
+
     var body: some View {
         VStack(spacing: 10) {
             Picker("", selection: $topTab) {
@@ -126,7 +137,7 @@ struct ConfigurationView: View {
 
                     moduleSettingsView(for: module)
                 } else {
-                    Text("Select a module from the left to configure it.")
+                    Text("Select a module from the left.")
                         .foregroundStyle(.secondary)
                         .padding(.top, 18)
                 }
@@ -134,39 +145,6 @@ struct ConfigurationView: View {
             .padding(.horizontal, 12)
             .padding(.bottom, 12)
         }
-    }
-
-    private var displayModeBinding: Binding<AppState.DisplayMode> {
-        Binding(
-            get: { appState.appearanceSettings.displayMode },
-            set: { value in
-                var settings = appState.appearanceSettings
-                settings.displayMode = value
-                appState.appearanceSettings = settings
-            }
-        )
-    }
-
-    private var spacingBinding: Binding<AppState.SpacingMode> {
-        Binding(
-            get: { appState.appearanceSettings.spacing },
-            set: { value in
-                var settings = appState.appearanceSettings
-                settings.spacing = value
-                appState.appearanceSettings = settings
-            }
-        )
-    }
-
-    private var separatorBinding: Binding<AppState.SeparatorStyle> {
-        Binding(
-            get: { appState.appearanceSettings.separator },
-            set: { value in
-                var settings = appState.appearanceSettings
-                settings.separator = value
-                appState.appearanceSettings = settings
-            }
-        )
     }
 
     private var globalConfigurationView: some View {
@@ -177,20 +155,6 @@ struct ConfigurationView: View {
                         Picker("Display Mode", selection: displayModeBinding) {
                             ForEach(AppState.DisplayMode.allCases) { mode in
                                 Text(mode.title).tag(mode)
-                            }
-                        }
-                        .pickerStyle(.segmented)
-
-                        Picker("Spacing", selection: spacingBinding) {
-                            ForEach(AppState.SpacingMode.allCases) { spacing in
-                                Text(spacing.rawValue).tag(spacing)
-                            }
-                        }
-                        .pickerStyle(.segmented)
-
-                        Picker("Separator Style", selection: separatorBinding) {
-                            ForEach(AppState.SeparatorStyle.allCases) { separator in
-                                Text(separator.rawValue).tag(separator)
                             }
                         }
                         .pickerStyle(.segmented)
@@ -207,50 +171,6 @@ struct ConfigurationView: View {
                                 Text(behavior.rawValue).tag(behavior)
                             }
                         }
-                    }
-                    .padding(8)
-                }
-
-                GroupBox("Appearance") {
-                    VStack(alignment: .leading, spacing: 10) {
-                        Toggle("Follow System Appearance", isOn: $appState.followSystemAppearance)
-
-                        if !appState.followSystemAppearance {
-                            Picker("Theme", selection: $appState.explicitAppearance) {
-                                ForEach(AppState.ExplicitAppearance.allCases) { appearance in
-                                    Text(appearance.rawValue).tag(appearance)
-                                }
-                            }
-                            .pickerStyle(.segmented)
-                        }
-
-                        Picker("Hover Verbosity", selection: $appState.hoverVerbosity) {
-                            ForEach(AppState.HoverVerbosity.allCases) { verbosity in
-                                Text(verbosity.rawValue).tag(verbosity)
-                            }
-                        }
-                        .pickerStyle(.segmented)
-                    }
-                    .padding(8)
-                }
-
-                GroupBox("Performance") {
-                    VStack(alignment: .leading, spacing: 10) {
-                        Picker("Refresh Rate", selection: $appState.refreshRate) {
-                            ForEach(AppState.RefreshRate.allCases) { rate in
-                                Text(rate.rawValue).tag(rate)
-                            }
-                        }
-
-                        Toggle("Reduce Refresh When Idle", isOn: $appState.reduceRefreshWhenIdle)
-                    }
-                    .padding(8)
-                }
-
-                GroupBox("System") {
-                    VStack(alignment: .leading, spacing: 10) {
-                        Toggle("Start at Login", isOn: $appState.launchAtLogin)
-                        Toggle("Hide Dock Icon", isOn: $appState.hideDockIcon)
                     }
                     .padding(8)
                 }
@@ -288,34 +208,10 @@ struct ConfigurationView: View {
 
     @ViewBuilder
     private func moduleSettingsView(for module: any MenuModule) -> some View {
-        switch module.id {
-        case "clock":
+        if module.id == "clock" {
             ClockModuleSettingsView()
-
-        case "battery":
-            Text("Battery module is currently disabled stub mode.")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-
-        case "network":
-            Text("Network module placeholder.")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-
-        case "cpu":
-            Text("CPU module placeholder.")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-
-        case "memory":
-            Text("Memory module placeholder.")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-
-        default:
-            Text("Module settings placeholder.")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
+        } else {
+            EmptyView()
         }
     }
 }

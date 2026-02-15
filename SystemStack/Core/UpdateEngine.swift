@@ -26,7 +26,7 @@ actor UpdateEngine {
             let snapshot = modules
             var didChange = false
 
-            for module in snapshot where module.isEnabled && module.id != "battery" {
+            for module in snapshot where module.isEnabled {
                 if await module.update() {
                     didChange = true
                 }
@@ -51,15 +51,6 @@ actor UpdateEngine {
 
         if enabled.contains(where: { $0.id == "cpu" || $0.id == "network" }) {
             return 1_000_000_000
-        }
-
-        if let clock = enabled.first(where: { $0.id == "clock" }) as? ClockModule,
-           clock.showSeconds {
-            return 1_000_000_000
-        }
-
-        if enabled.count == 1, enabled.first?.id == "battery" {
-            return 10_000_000_000
         }
 
         return 5_000_000_000

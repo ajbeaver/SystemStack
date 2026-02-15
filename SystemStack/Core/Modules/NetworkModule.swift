@@ -1,4 +1,3 @@
-import AppKit
 import Foundation
 import Darwin
 
@@ -10,15 +9,8 @@ private struct NetworkCounters {
 final class NetworkModule: BaseMenuModule, @unchecked Sendable {
     private var interfaceName: String?
     private var previousSample: (counters: NetworkCounters, timestamp: TimeInterval)?
-    private let statusImageValue: NSImage?
-
-    var statusImage: NSImage? { statusImageValue }
 
     init(isEnabled: Bool = false) {
-        let config = NSImage.SymbolConfiguration(pointSize: 11, weight: .regular)
-        statusImageValue = NSImage(systemSymbolName: "arrow.up.arrow.down", accessibilityDescription: nil)?
-            .withSymbolConfiguration(config)
-        statusImageValue?.isTemplate = true
         super.init(id: "network", title: "Network", symbolName: "arrow.up.arrow.down", isEnabled: isEnabled)
     }
 

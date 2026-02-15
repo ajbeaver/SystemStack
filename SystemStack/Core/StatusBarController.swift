@@ -133,43 +133,34 @@ final class StatusBarController: NSObject {
     }
 
     private func applyVisuals(_ modules: [BaseMenuModule], mode: AppState.DisplayMode) {
-        for (index, module) in modules.enumerated() {
+        for module in modules {
             module.statusItem?.isVisible = true
             updateStatusItem(
                 for: module,
-                mode: mode,
-                index: index,
-                visibleCount: modules.count
+                mode: mode
             )
         }
     }
 
     private func updateStatusItem(
         for module: BaseMenuModule,
-        mode: AppState.DisplayMode,
-        index: Int,
-        visibleCount: Int
+        mode: AppState.DisplayMode
     ) {
         guard let button = module.statusItem?.button else { return }
 
         let value = module.displayValue.isEmpty ? "—" : module.displayValue
         let image = mode == .valueOnly ? nil : moduleImage(for: module)
-        let trailingSpacing = spacingSuffix(for: index, visibleCount: visibleCount)
 
         switch mode {
         case .iconOnly:
             button.image = image
-            if image == nil {
-                button.title = "\(value)\(trailingSpacing)"
-            } else {
-                button.title = trailingSpacing
-            }
+            button.title = image == nil ? value : ""
         case .valueOnly:
             button.image = nil
-            button.title = "\(value)\(trailingSpacing)"
+            button.title = value
         case .iconAndValue:
             button.image = image
-            button.title = "\(value)\(trailingSpacing)"
+            button.title = value
         }
 
         button.toolTip = value
@@ -206,22 +197,6 @@ final class StatusBarController: NSObject {
         }
     }
 
-    private func spacingSuffix(for index: Int, visibleCount: Int) -> String {
-        guard index < visibleCount - 1 else { return "" }
-
-        let count: Int
-        switch appState.appearanceSettings.spacing {
-        case .compact:
-            count = 1
-        case .normal:
-            count = 2
-        case .wide:
-            count = 3
-        }
-
-        return String(repeating: " ", count: count)
-    }
-
     private func hideTrailingUntilFits(_ modules: [BaseMenuModule], mode: AppState.DisplayMode) {
         var visibleCount = modules.count
 
@@ -236,7 +211,7 @@ final class StatusBarController: NSObject {
         for (index, module) in modules.enumerated() {
             if index < visibleCount {
                 module.statusItem?.isVisible = true
-                updateStatusItem(for: module, mode: mode, index: index, visibleCount: visibleCount)
+                updateStatusItem(for: module, mode: mode)
             } else {
                 module.statusItem?.isVisible = false
             }
