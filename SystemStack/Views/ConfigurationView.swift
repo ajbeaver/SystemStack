@@ -171,6 +171,10 @@ struct ConfigurationView: View {
                                 Text(behavior.rawValue).tag(behavior)
                             }
                         }
+
+                        Text("Tip: Hold ⌘ and drag menu bar icons to reorder them.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
                     .padding(8)
                 }

@@ -149,21 +149,18 @@ final class StatusBarController: NSObject {
         guard let button = module.statusItem?.button else { return }
 
         let value = module.displayValue.isEmpty ? "—" : module.displayValue
-        let image = mode == .valueOnly ? nil : moduleImage(for: module)
+        let image = moduleImage(for: module)
 
         switch mode {
         case .iconOnly:
             button.image = image
             button.title = image == nil ? value : ""
-        case .valueOnly:
-            button.image = nil
-            button.title = value
         case .iconAndValue:
             button.image = image
             button.title = value
         }
 
-        button.toolTip = value
+        button.toolTip = "\(moduleShortLabel(for: module)) \(value)"
     }
 
     private func moduleImage(for module: BaseMenuModule) -> NSImage? {
@@ -194,6 +191,23 @@ final class StatusBarController: NSObject {
             return 11
         case .standard:
             return 13
+        }
+    }
+
+    private func moduleShortLabel(for module: BaseMenuModule) -> String {
+        switch module.id {
+        case "cpu":
+            return "CPU"
+        case "memory":
+            return "Mem"
+        case "clock":
+            return "Time"
+        case "network":
+            return "Net"
+        case "disk":
+            return "Disk"
+        default:
+            return appState.title(for: module)
         }
     }
 

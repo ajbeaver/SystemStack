@@ -4,7 +4,6 @@ import SwiftUI
 final class AppState: ObservableObject {
     enum DisplayMode: String, CaseIterable, Identifiable {
         case iconOnly
-        case valueOnly
         case iconAndValue
 
         var id: String { rawValue }
@@ -13,8 +12,6 @@ final class AppState: ObservableObject {
             switch self {
             case .iconOnly:
                 return "Icons only"
-            case .valueOnly:
-                return "Values only"
             case .iconAndValue:
                 return "Icons + values"
             }
