@@ -395,8 +395,8 @@ final class NetworkModule: BaseMenuModule, @unchecked Sendable {
         switch hoverMode {
         case .throughput:
             return """
-            ↓  \(makeSparkline(from: downloadHistory))
-            ↑  \(makeSparkline(from: uploadHistory))
+            ↓ \(makeSparkline(from: downloadHistory))
+            ↑ \(makeSparkline(from: uploadHistory))
             Interface: \(info.name)
             """
         case .interface:
@@ -414,29 +414,35 @@ final class NetworkModule: BaseMenuModule, @unchecked Sendable {
         hoverStateLock.lock()
         downloadHistory.append(max(downloadBytesPerSecond, 0))
         uploadHistory.append(max(uploadBytesPerSecond, 0))
-        if downloadHistory.count > 16 {
-            downloadHistory.removeFirst(downloadHistory.count - 16)
+        if downloadHistory.count > 24 {
+            downloadHistory.removeFirst(downloadHistory.count - 24)
         }
-        if uploadHistory.count > 16 {
-            uploadHistory.removeFirst(uploadHistory.count - 16)
+        if uploadHistory.count > 24 {
+            uploadHistory.removeFirst(uploadHistory.count - 24)
         }
         hoverStateLock.unlock()
     }
 
     private func makeSparkline(from samples: [Double]) -> String {
         let symbols = Array("▁▂▃▄▅▆▇█")
-        guard !samples.isEmpty else { return "────────" }
+        let width = ModuleVisuals.networkSparklineWidth
+        guard !samples.isEmpty else { return String(repeating: "─", count: width) }
 
-        let visible = Array(samples.suffix(14))
+        let visible = Array(samples.suffix(width))
         let minSample = visible.min() ?? 0
         let maxSample = visible.max() ?? 0
         let span = max(maxSample - minSample, max(maxSample, 16_384.0))
 
-        return visible.map { sample in
+        let spark = visible.map { sample in
             let normalized = max(0.0, min(1.0, (sample - minSample) / span))
             let index = Int((normalized * Double(symbols.count - 1)).rounded())
             return String(symbols[index])
         }.joined()
+
+        if spark.count < width {
+            return String(repeating: "─", count: width - spark.count) + spark
+        }
+        return spark
     }
 
     private func formatBytesPerSecond(

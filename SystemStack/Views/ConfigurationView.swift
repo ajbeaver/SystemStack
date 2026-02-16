@@ -11,7 +11,6 @@ struct ConfigurationView: View {
     }
 
     @EnvironmentObject private var appState: AppState
-    @State private var searchText = ""
     @State private var selectedModuleID: String?
     @State private var topTab: TopTab = .modules
     @State private var launchAtLoginEnabled = false
@@ -19,7 +18,7 @@ struct ConfigurationView: View {
     @State private var launchAtLoginError: String?
 
     private var filteredModules: [any MenuModule] {
-        appState.modules(matching: searchText)
+        appState.orderedModules
     }
 
     private var selectedModule: (any MenuModule)? {
@@ -31,22 +30,37 @@ struct ConfigurationView: View {
     }
 
     var body: some View {
-        VStack(spacing: 12) {
-            Picker("", selection: $topTab) {
-                ForEach(TopTab.allCases) { tab in
-                    Text(tab.rawValue).tag(tab)
+        VStack(spacing: 0) {
+            Spacer(minLength: 0)
+
+            VStack(spacing: 12) {
+                Picker("", selection: $topTab) {
+                    ForEach(TopTab.allCases) { tab in
+                        Text(tab.rawValue).tag(tab)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .padding(.horizontal, 16)
+                .padding(.top, 14)
+
+                switch topTab {
+                case .modules:
+                    modulesEditor
+                case .configuration:
+                    globalConfigurationView
                 }
             }
-            .pickerStyle(.segmented)
-            .padding(.horizontal, 16)
-            .padding(.top, 14)
+            .frame(width: 490, height: 560, alignment: .top)
+            .background(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(Color.white.opacity(0.045))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .strokeBorder(Color.white.opacity(0.08), lineWidth: 1)
+                    )
+            )
 
-            switch topTab {
-            case .modules:
-                modulesEditor
-            case .configuration:
-                globalConfigurationView
-            }
+            Spacer(minLength: 0)
         }
         .frame(width: 560, height: 600, alignment: .top)
         .onAppear {
@@ -70,11 +84,6 @@ struct ConfigurationView: View {
 
     private var leftColumn: some View {
         VStack(spacing: 10) {
-            TextField("Search Modules", text: $searchText)
-                .textFieldStyle(.roundedBorder)
-                .padding(.horizontal, 10)
-                .padding(.top, 10)
-
             ScrollView {
                 LazyVStack(spacing: 2) {
                     ForEach(filteredModules, id: \.id) { module in
@@ -83,7 +92,7 @@ struct ConfigurationView: View {
                 }
             }
             .padding(.horizontal, 6)
-            .padding(.bottom, 10)
+            .padding(.vertical, 10)
         }
     }
 
@@ -128,7 +137,7 @@ struct ConfigurationView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
                 if let module = selectedModule {
-                    Text(appState.title(for: module))
+                    Text(moduleHeaderTitle(for: module))
                         .font(.title3)
                         .fontWeight(.semibold)
                         .padding(.top, 10)
@@ -146,71 +155,65 @@ struct ConfigurationView: View {
     }
 
     private var globalConfigurationView: some View {
-        ScrollView {
-            VStack(spacing: 14) {
-                GroupBox("Startup") {
-                    VStack(alignment: .leading, spacing: 10) {
-                        Toggle("Launch at Login", isOn: Binding(
-                            get: { launchAtLoginEnabled },
-                            set: { setLaunchAtLogin($0) }
-                        ))
-                        .disabled(!launchAtLoginAvailable)
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Tip: Hold ⌘ and drag menu bar icons to reorder them.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .center)
 
-                        if let launchAtLoginError, !launchAtLoginError.isEmpty {
-                            Text(launchAtLoginError)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                    .padding(8)
-                }
+            Toggle("Launch at Login", isOn: Binding(
+                get: { launchAtLoginEnabled },
+                set: { setLaunchAtLogin($0) }
+            ))
+            .toggleStyle(.switch)
+            .disabled(!launchAtLoginAvailable)
 
-                GroupBox("Control") {
-                    VStack(alignment: .leading, spacing: 10) {
-                        HStack(spacing: 10) {
-                            Button("Reset to Defaults") {
-                                appState.resetToDefaults()
-                            }
-
-                            Button("Quit") {
-                                NSApp.terminate(nil)
-                            }
-                        }
-
-                        Text("Settings are saved automatically.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    .padding(8)
-                }
-
-                GroupBox("About") {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text(appName)
-                            .font(.subheadline)
-                            .fontWeight(.semibold)
-
-                        Text("Version \(appVersion)")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-
-                        Text("Build \(appBuild)")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    .padding(8)
-                }
-
-                Text("Tip: Hold ⌘ and drag menu bar icons to reorder them.")
+            if let launchAtLoginError, !launchAtLoginError.isEmpty {
+                Text(launchAtLoginError)
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .frame(maxWidth: 480)
-            .frame(maxWidth: .infinity)
-            .padding(.horizontal, 16)
-            .padding(.bottom, 16)
+
+            Spacer(minLength: 0)
+
+            HStack(spacing: 14) {
+                Button("Reset to Defaults") {
+                    appState.resetToDefaults()
+                }
+
+                Button("Quit") {
+                    NSApp.terminate(nil)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .center)
+
+            Text("\(appName) · v\(appVersion) · Build \(appBuild)")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .frame(maxWidth: .infinity, alignment: .center)
         }
+        .padding(.horizontal, 20)
+        .padding(.top, 18)
+        .padding(.bottom, 16)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    private func moduleHeaderTitle(for module: any MenuModule) -> String {
+        if module.id == "clock" {
+            return "\(appState.title(for: module)) · Default Clock"
+        }
+        if isGeneratedClockID(module.id) {
+            return "\(appState.title(for: module)) · Generated Clock"
+        }
+        return appState.title(for: module)
+    }
+
+    private func isGeneratedClockID(_ id: String) -> Bool {
+        guard id.hasPrefix("clock.") else { return false }
+        let suffix = id.dropFirst("clock.".count)
+        guard !suffix.isEmpty, suffix.first != "0" else { return false }
+        return suffix.allSatisfy(\.isNumber)
     }
 
     private var appName: String {
@@ -264,6 +267,7 @@ struct ConfigurationView: View {
                 get: { module.showsValue },
                 set: { appState.setModuleShowsValue(id: module.id, showsValue: $0) }
             ))
+            .toggleStyle(.switch)
 
             if module.id.hasPrefix("clock") {
                 ClockModuleSettingsView(moduleID: module.id)
@@ -493,26 +497,36 @@ private struct ClockModuleSettingsView: View {
                     TextField("Search timezones", text: $customTimezoneSearch)
                         .textFieldStyle(.roundedBorder)
 
-                    Button {
-                        appState.addClockModule(after: moduleID)
-                    } label: {
-                        Label("Add Clock", systemImage: "plus")
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(!appState.canAddClockModule())
-
-                    if !appState.canAddClockModule() {
-                        Text("Maximum of \(AppState.maxClockModules) clocks reached.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-
                     timezoneResultsView(search: customTimezoneSearch)
                         .frame(height: 120)
                 }
             }
 
-            if moduleID != "clock" {
+            HStack {
+                if moduleID == "clock" {
+                    Label("Default Clock", systemImage: "clock.badge.checkmark")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer()
+
+                Button {
+                    appState.addClockModule(after: moduleID)
+                } label: {
+                    Label("Add Clock", systemImage: "plus")
+                }
+                .buttonStyle(.plain)
+                .disabled(!appState.canAddClockModule())
+            }
+
+            if !appState.canAddClockModule() {
+                Text("Maximum of \(AppState.maxClockModules) clocks reached.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            if isGeneratedClockID(moduleID) {
                 Divider()
                     .padding(.top, 4)
 
@@ -597,5 +611,12 @@ private struct ClockModuleSettingsView: View {
         appState.updateClockSettings(moduleID: moduleID) { settings in
             settings.selectedTimezones = [id]
         }
+    }
+
+    private func isGeneratedClockID(_ id: String) -> Bool {
+        guard id.hasPrefix("clock.") else { return false }
+        let suffix = id.dropFirst("clock.".count)
+        guard !suffix.isEmpty, suffix.first != "0" else { return false }
+        return suffix.allSatisfy(\.isNumber)
     }
 }

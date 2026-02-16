@@ -1,6 +1,11 @@
 import AppKit
 import Foundation
 
+enum ModuleVisuals {
+    static let networkSparklineWidth = 20
+    static let standardSparklineWidth = networkSparklineWidth + 1
+}
+
 protocol MenuModule: AnyObject, Sendable {
     var id: String { get }
     var symbolName: String? { get }

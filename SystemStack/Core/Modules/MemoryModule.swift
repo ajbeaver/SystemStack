@@ -203,24 +203,31 @@ final class MemoryModule: BaseMenuModule, @unchecked Sendable {
 
     private func makeSparkline() -> String {
         let symbols = Array("▁▂▃▄▅▆▇█")
+        let width = ModuleVisuals.standardSparklineWidth
 
         hoverStateLock.lock()
         let samples = usageHistory
         hoverStateLock.unlock()
 
         guard !samples.isEmpty else {
-            return "────────"
+            return String(repeating: "─", count: width)
         }
 
-        let minSample = samples.min() ?? 0
-        let maxSample = samples.max() ?? 100
+        let visible = Array(samples.suffix(width))
+        let minSample = visible.min() ?? 0
+        let maxSample = visible.max() ?? 100
         let span = max(maxSample - minSample, 8.0)
 
-        return samples.map { sample in
+        let spark = visible.map { sample in
             let normalized = max(0.0, min(1.0, (sample - minSample) / span))
             let index = Int((normalized * Double(symbols.count - 1)).rounded())
             return String(symbols[index])
         }.joined()
+
+        if spark.count < width {
+            return String(repeating: "─", count: width - spark.count) + spark
+        }
+        return spark
     }
 
     private func formatGigabytes(_ bytes: UInt64) -> String {

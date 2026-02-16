@@ -10,6 +10,7 @@ final class DiskUsageModule: BaseMenuModule, @unchecked Sendable {
 
     private struct VolumeUsage: Sendable {
         let name: String
+        let mountPath: String?
         let freeBytes: UInt64
     }
 
@@ -182,7 +183,12 @@ final class DiskUsageModule: BaseMenuModule, @unchecked Sendable {
             }
 
             let name = values.volumeName ?? url.lastPathComponent
-            return VolumeUsage(name: name.isEmpty ? "/" : name, freeBytes: UInt64(max(available, 0)))
+            let resolvedMountPath = url.path.isEmpty ? nil : url.path
+            return VolumeUsage(
+                name: name.isEmpty ? "/" : name,
+                mountPath: resolvedMountPath,
+                freeBytes: UInt64(max(available, 0))
+            )
         }
 
         return usages.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
@@ -218,7 +224,12 @@ final class DiskUsageModule: BaseMenuModule, @unchecked Sendable {
             guard showsVolumeList else { return "Volume list hidden." }
             guard !snapshot.volumes.isEmpty else { return "No volumes detected." }
             return snapshot.volumes
-                .map { "\($0.name): \(formatStorage($0.freeBytes)) free" }
+                .map { volume in
+                    if let mountPath = volume.mountPath, !mountPath.isEmpty {
+                        return "\(volume.name) (\(mountPath)): \(formatStorage(volume.freeBytes)) free"
+                    }
+                    return "\(volume.name): \(formatStorage(volume.freeBytes)) free"
+                }
                 .joined(separator: "\n")
         }
     }

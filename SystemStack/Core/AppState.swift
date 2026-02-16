@@ -65,11 +65,15 @@ final class AppState: ObservableObject {
             let restored = Self.restoreState(from: persisted, defaults: defaults, defaultClockSettings: defaultClockSettings)
             orderedModules = restored.modules
             clockSettingsByModuleID = restored.clockSettings
+            if restored.didNormalize {
+                persistState()
+            }
         } else {
             orderedModules = defaults
             clockSettingsByModuleID = defaultClockSettings
         }
 
+        _ = normalizeClockStateInMemory()
         startEngine()
     }
 
@@ -126,7 +130,12 @@ final class AppState: ObservableObject {
     func addClockModule(after moduleID: String?) {
         guard clockModuleCount() < Self.maxClockModules else { return }
 
-        let sourceID = moduleID ?? "clock"
+        let sourceID: String
+        if let moduleID, isClockModuleID(moduleID) {
+            sourceID = moduleID
+        } else {
+            sourceID = "clock"
+        }
         let sourceSettings = clockSettingsByModuleID[sourceID] ?? .default(isEnabled: true)
         let newID = nextClockModuleID()
 
@@ -137,15 +146,11 @@ final class AppState: ObservableObject {
             settings: sourceSettings
         )
 
-        let insertIndex: Int
-        if let moduleID, let index = orderedModules.firstIndex(where: { $0.id == moduleID }) {
-            insertIndex = index + 1
-        } else {
-            insertIndex = 0
-        }
+        let insertIndex = (orderedModules.lastIndex(where: { $0.id.hasPrefix("clock") }) ?? -1) + 1
 
         orderedModules.insert(newClock, at: insertIndex)
         clockSettingsByModuleID[newID] = sourceSettings
+        _ = normalizeClockStateInMemory()
 
         Task {
             await updateEngine.setModules(orderedModules)
@@ -161,11 +166,12 @@ final class AppState: ObservableObject {
     }
 
     func removeClockModule(id: String) {
-        guard id.hasPrefix("clock"), id != "clock" else { return }
+        guard isGeneratedClockID(id) else { return }
         guard let index = orderedModules.firstIndex(where: { $0.id == id }) else { return }
 
         orderedModules.remove(at: index)
         clockSettingsByModuleID.removeValue(forKey: id)
+        _ = normalizeClockStateInMemory()
 
         Task {
             await updateEngine.setModules(orderedModules)
@@ -457,10 +463,114 @@ final class AppState: ObservableObject {
 
     private func clockModuleCount() -> Int {
         orderedModules.reduce(into: 0) { count, module in
-            if module.id.hasPrefix("clock") {
+            if isClockModuleID(module.id) {
                 count += 1
             }
         }
+    }
+
+    private static func isGeneratedClockID(_ id: String) -> Bool {
+        guard id.hasPrefix("clock.") else { return false }
+        let suffix = id.dropFirst("clock.".count)
+        guard !suffix.isEmpty, suffix.first != "0" else { return false }
+        return suffix.allSatisfy(\.isNumber)
+    }
+
+    private static func isClockModuleID(_ id: String) -> Bool {
+        id == "clock" || isGeneratedClockID(id)
+    }
+
+    private func isGeneratedClockID(_ id: String) -> Bool {
+        Self.isGeneratedClockID(id)
+    }
+
+    private func isClockModuleID(_ id: String) -> Bool {
+        Self.isClockModuleID(id)
+    }
+
+    @discardableResult
+    private func normalizeClockStateInMemory() -> Bool {
+        let originalOrder = orderedModules.map(\.id)
+        let originalSettingsKeys = Set(clockSettingsByModuleID.keys)
+        var normalizedModules: [any MenuModule] = []
+        var seenIDs = Set<String>()
+        var keptGenerated = 0
+        var sawDefaultClock = false
+        var didChange = false
+
+        for module in orderedModules {
+            let id = module.id
+            if seenIDs.contains(id) {
+                didChange = true
+                continue
+            }
+            seenIDs.insert(id)
+
+            if id == "clock" {
+                if sawDefaultClock {
+                    didChange = true
+                    continue
+                }
+                sawDefaultClock = true
+                normalizedModules.append(module)
+                continue
+            }
+
+            if Self.isGeneratedClockID(id) {
+                if keptGenerated < (Self.maxClockModules - 1) {
+                    keptGenerated += 1
+                    normalizedModules.append(module)
+                } else {
+                    didChange = true
+                }
+                continue
+            }
+
+            if id.hasPrefix("clock") {
+                didChange = true
+                continue
+            }
+
+            normalizedModules.append(module)
+        }
+
+        if !sawDefaultClock {
+            normalizedModules.insert(
+                ClockModule(id: "clock", title: "Clock", isEnabled: true, settings: .default(isEnabled: true)),
+                at: 0
+            )
+            didChange = true
+        }
+
+        var normalizedClockSettings: [String: ClockSettings] = [:]
+        for module in normalizedModules where Self.isClockModuleID(module.id) {
+            let id = module.id
+            var settings = clockSettingsByModuleID[id] ?? .default(isEnabled: module.isEnabled)
+            if settings.isEnabled != module.isEnabled {
+                settings.isEnabled = module.isEnabled
+                didChange = true
+            }
+            normalizedClockSettings[id] = settings
+
+            if let clock = module as? ClockModule {
+                clock.applySettings(settings)
+            }
+        }
+
+        let normalizedOrder = normalizedModules.map(\.id)
+        if normalizedOrder != originalOrder {
+            didChange = true
+        }
+        if Set(normalizedClockSettings.keys) != originalSettingsKeys {
+            didChange = true
+        }
+
+        if didChange {
+            orderedModules = normalizedModules
+            clockSettingsByModuleID = normalizedClockSettings
+        }
+
+        return didChange
     }
 
     private func persistState() {
@@ -542,31 +652,106 @@ final class AppState: ObservableObject {
         from state: PersistedState,
         defaults: [any MenuModule],
         defaultClockSettings: [String: ClockSettings]
-    ) -> (modules: [any MenuModule], clockSettings: [String: ClockSettings]) {
+    ) -> (modules: [any MenuModule], clockSettings: [String: ClockSettings], didNormalize: Bool) {
         var clockSettings = state.clockSettingsByModuleID
-        if clockSettings["clock"] == nil {
-            clockSettings["clock"] = defaultClockSettings["clock"] ?? .default(isEnabled: true)
+        var normalizedOrder = state.moduleOrder
+        var didNormalize = false
+
+        if !normalizedOrder.contains("clock") {
+            normalizedOrder.insert("clock", at: 0)
+            didNormalize = true
         }
 
-        var modules = defaults
-        let existingIDs = Set(modules.map(\.id))
-        let extraClockIDs = state.moduleOrder
-            .filter { $0.hasPrefix("clock.") && !existingIDs.contains($0) }
+        var dedupedOrder: [String] = []
+        var seenIDs = Set<String>()
+        for id in normalizedOrder {
+            guard !seenIDs.contains(id) else {
+                didNormalize = true
+                continue
+            }
+            seenIDs.insert(id)
+            dedupedOrder.append(id)
+        }
 
-        for id in extraClockIDs {
+        var retainedGeneratedClockIDs: [String] = []
+        for id in dedupedOrder where isGeneratedClockID(id) {
+            retainedGeneratedClockIDs.append(id)
+            if retainedGeneratedClockIDs.count == (maxClockModules - 1) {
+                break
+            }
+        }
+
+        let retainedClockIDSet = Set(["clock"] + retainedGeneratedClockIDs)
+        let filteredOrder = dedupedOrder.filter { id in
+            if id == "clock" {
+                return true
+            }
+            if id.hasPrefix("clock") {
+                let keep = retainedClockIDSet.contains(id)
+                if !keep {
+                    didNormalize = true
+                }
+                return keep
+            }
+            return true
+        }
+        if filteredOrder.count != dedupedOrder.count {
+            didNormalize = true
+        }
+        if filteredOrder.first != "clock" {
+            didNormalize = true
+        }
+
+        let orderedRetainedClockIDs = ["clock"] + retainedGeneratedClockIDs
+        var retainedClockSettings: [String: ClockSettings] = [:]
+        for id in orderedRetainedClockIDs {
+            if let settings = clockSettings[id] {
+                retainedClockSettings[id] = settings
+            } else {
+                retainedClockSettings[id] = defaultClockSettings["clock"] ?? .default(isEnabled: true)
+                didNormalize = true
+            }
+        }
+        if retainedClockSettings["clock"] == nil {
+            retainedClockSettings["clock"] = defaultClockSettings["clock"] ?? .default(isEnabled: true)
+            didNormalize = true
+        }
+        clockSettings = retainedClockSettings
+
+        var modulesByID: [String: any MenuModule] = [:]
+        for module in defaults {
+            modulesByID[module.id] = module
+        }
+
+        for id in retainedGeneratedClockIDs where modulesByID[id] == nil {
             let settings = clockSettings[id] ?? .default(isEnabled: true)
-            modules.append(ClockModule(id: id, title: "Clock", isEnabled: settings.isEnabled, settings: settings))
-            clockSettings[id] = settings
+            modulesByID[id] = ClockModule(id: id, title: "Clock", isEnabled: settings.isEnabled, settings: settings)
         }
 
-        var byID: [String: any MenuModule] = Dictionary(uniqueKeysWithValues: modules.map { ($0.id, $0) })
         var reordered: [any MenuModule] = []
-        for id in state.moduleOrder {
-            if let module = byID.removeValue(forKey: id) {
+        for id in filteredOrder {
+            if let module = modulesByID.removeValue(forKey: id) {
                 reordered.append(module)
             }
         }
-        reordered.append(contentsOf: byID.values)
+
+        for module in defaults where modulesByID[module.id] != nil {
+            reordered.append(module)
+            modulesByID.removeValue(forKey: module.id)
+        }
+        for generatedID in retainedGeneratedClockIDs where modulesByID[generatedID] != nil {
+            if let module = modulesByID.removeValue(forKey: generatedID) {
+                reordered.append(module)
+            }
+        }
+
+        if reordered.first?.id != "clock" {
+            if let index = reordered.firstIndex(where: { $0.id == "clock" }) {
+                let module = reordered.remove(at: index)
+                reordered.insert(module, at: 0)
+                didNormalize = true
+            }
+        }
 
         for module in reordered {
             if let enabled = state.moduleEnabled[module.id] {
@@ -607,6 +792,13 @@ final class AppState: ObservableObject {
             }
         }
 
-        return (reordered, clockSettings)
+        if filteredOrder != state.moduleOrder {
+            didNormalize = true
+        }
+        if clockSettings.keys.count != state.clockSettingsByModuleID.keys.count {
+            didNormalize = true
+        }
+
+        return (reordered, clockSettings, didNormalize)
     }
 }

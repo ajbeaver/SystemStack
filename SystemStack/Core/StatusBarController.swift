@@ -11,6 +11,7 @@ final class StatusBarController: NSObject {
 
     private var cancellables = Set<AnyCancellable>()
     private var cachedSymbolImages: [String: NSImage] = [:]
+    private var statusItemsByModuleID: [String: NSStatusItem] = [:]
     private var lastOrderKey = ""
     private var activePopoverModuleID: String?
     private var configurationWindowController: NSWindowController?
@@ -81,13 +82,25 @@ final class StatusBarController: NSObject {
 
     private func syncStatusItems(rebuildOrder: Bool) {
         let modules = appState.orderedModules.compactMap { $0 as? BaseMenuModule }
+        let moduleIDs = Set(modules.map(\.id))
+
+        // Remove stale status items for modules that no longer exist.
+        for (moduleID, item) in statusItemsByModuleID where !moduleIDs.contains(moduleID) {
+            NSStatusBar.system.removeStatusItem(item)
+            statusItemsByModuleID.removeValue(forKey: moduleID)
+        }
+
+        for module in modules {
+            module.statusItem = statusItemsByModuleID[module.id]
+        }
 
         if rebuildOrder {
+            for (_, item) in statusItemsByModuleID {
+                NSStatusBar.system.removeStatusItem(item)
+            }
+            statusItemsByModuleID.removeAll()
             for module in modules {
-                if let item = module.statusItem {
-                    NSStatusBar.system.removeStatusItem(item)
-                    module.statusItem = nil
-                }
+                module.statusItem = nil
             }
             lastOrderKey = orderKey()
         }
@@ -107,8 +120,14 @@ final class StatusBarController: NSObject {
     }
 
     private func createStatusItem(for module: BaseMenuModule) {
+        if let existing = statusItemsByModuleID[module.id] {
+            module.statusItem = existing
+            return
+        }
+
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         module.statusItem = item
+        statusItemsByModuleID[module.id] = item
 
         guard let button = item.button else { return }
         button.image = nil
@@ -501,7 +520,8 @@ private struct ModuleDetailPopoverView: View {
                 Button("Quit", action: quitApp)
             }
         }
-        .padding(12)
+        .padding(.vertical, 12)
+        .padding(.horizontal, 10)
         .frame(width: 280, height: 180, alignment: .topLeading)
     }
 
