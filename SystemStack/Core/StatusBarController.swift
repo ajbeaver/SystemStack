@@ -6,6 +6,7 @@ import SwiftUI
 final class StatusBarController: NSObject {
     private let appState: AppState
     private let modulePopover = NSPopover()
+    private let modulePopoverContent = ModulePopoverContent()
     private let contextMenu = NSMenu()
 
     private var cancellables = Set<AnyCancellable>()
@@ -26,6 +27,19 @@ final class StatusBarController: NSObject {
     private func configureModulePopover() {
         modulePopover.behavior = .transient
         modulePopover.animates = true
+        modulePopover.contentSize = NSSize(width: 280, height: 180)
+
+        let rootView = ModuleDetailPopoverView(
+            content: modulePopoverContent,
+            openConfiguration: { [weak self] in
+                self?.openConfiguration()
+            },
+            quitApp: { [weak self] in
+                self?.quitApp()
+            }
+        )
+        .environmentObject(appState)
+        modulePopover.contentViewController = NSHostingController(rootView: rootView)
     }
 
     private func configureContextMenu() {
@@ -301,33 +315,32 @@ final class StatusBarController: NSObject {
 
     private func showModulePopover(for module: BaseMenuModule, anchorButton: NSStatusBarButton) {
         activePopoverModuleID = module.id
-        let rootView = ModuleDetailPopoverView(
-            title: appState.title(for: module),
-            value: module.displayValue.isEmpty ? "—" : module.displayValue,
-            detail: moduleDetailText(for: module),
-            openConfiguration: { [weak self] in
-                self?.openConfiguration()
-            },
-            quitApp: { [weak self] in
-                self?.quitApp()
-            }
-        )
-        .environmentObject(appState)
-
-        modulePopover.contentSize = NSSize(width: 280, height: 180)
-        modulePopover.contentViewController = NSHostingController(rootView: rootView)
+        updateModulePopoverContent(for: module)
         modulePopover.show(relativeTo: anchorButton.bounds, of: anchorButton, preferredEdge: .minY)
     }
 
     private func refreshActiveModulePopover() {
         guard modulePopover.isShown,
               let moduleID = activePopoverModuleID,
-              let module = appState.orderedModules.first(where: { $0.id == moduleID }) as? BaseMenuModule,
-              let button = module.statusItem?.button else {
+              let module = appState.orderedModules.first(where: { $0.id == moduleID }) as? BaseMenuModule else {
             return
         }
 
-        showModulePopover(for: module, anchorButton: button)
+        updateModulePopoverContent(for: module)
+    }
+
+    private func updateModulePopoverContent(for module: BaseMenuModule) {
+        modulePopoverContent.title = appState.title(for: module)
+        modulePopoverContent.value = module.displayValue.isEmpty ? "—" : module.displayValue
+        modulePopoverContent.detail = moduleDetailText(for: module)
+        if let cpu = module as? CPUModule, cpu.hoverMode == .perCore {
+            let perCoreValues = cpu.perCorePercentages
+            modulePopoverContent.showsPerCoreGrid = !perCoreValues.isEmpty
+            modulePopoverContent.perCorePercentages = perCoreValues
+        } else {
+            modulePopoverContent.showsPerCoreGrid = false
+            modulePopoverContent.perCorePercentages = []
+        }
     }
 
     private func moduleDetailText(for module: BaseMenuModule) -> String {
@@ -366,38 +379,112 @@ final class StatusBarController: NSObject {
     }
 }
 
+@MainActor
+private final class ModulePopoverContent: ObservableObject {
+    @Published var title = ""
+    @Published var value = "—"
+    @Published var detail = ""
+    @Published var showsPerCoreGrid = false
+    @Published var perCorePercentages: [Double] = []
+}
+
 private struct ModuleDetailPopoverView: View {
-    let title: String
-    let value: String
-    let detail: String
+    @ObservedObject var content: ModulePopoverContent
     let openConfiguration: () -> Void
     let quitApp: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(title)
+            Text(content.title)
                 .font(.headline)
 
-            Text(value)
+            Text(content.value)
                 .font(.title3)
                 .fontWeight(.semibold)
 
-            Text(detail)
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .lineLimit(3)
+            if content.showsPerCoreGrid {
+                CPUPerCoreGridView(values: content.perCorePercentages)
+            } else {
+                Text(content.detail)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(8)
+                    .multilineTextAlignment(.leading)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
 
             Spacer(minLength: 4)
 
             Divider()
 
             HStack {
-                Button("Open Configuration", action: openConfiguration)
+                Button("Settings", action: openConfiguration)
                 Spacer()
-                Button("Quit SystemStack", action: quitApp)
+                Button("Quit", action: quitApp)
             }
         }
         .padding(12)
         .frame(width: 280, height: 180, alignment: .topLeading)
+    }
+}
+
+private struct CPUPerCoreGridView: View {
+    let values: [Double]
+
+    var body: some View {
+        GeometryReader { proxy in
+            let columnCount = suggestedColumnCount(for: proxy.size.width, itemCount: values.count)
+            let rows = gridRows(columnCount: columnCount)
+
+            ScrollView(.vertical) {
+                VStack(alignment: .leading, spacing: 3) {
+                    ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
+                        HStack(alignment: .firstTextBaseline, spacing: 10) {
+                            ForEach(Array(row.enumerated()), id: \.offset) { _, entry in
+                                Text(entry)
+                                    .font(.caption)
+                                    .monospacedDigit()
+                                    .foregroundStyle(.secondary)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                            }
+                            if row.count < columnCount {
+                                ForEach(0 ..< (columnCount - row.count), id: \.self) { _ in
+                                    Text("")
+                                        .font(.caption)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                }
+                            }
+                        }
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    private func suggestedColumnCount(for width: CGFloat, itemCount: Int) -> Int {
+        if itemCount <= 4 { return min(2, max(1, itemCount)) }
+        if width >= 300 { return 4 }
+        if width >= 220 { return 3 }
+        return 2
+    }
+
+    private func gridRows(columnCount: Int) -> [[String]] {
+        guard columnCount > 0 else { return [] }
+
+        let entries = values.enumerated().map { index, value in
+            String(format: "Core %2d: %3d%%", index + 1, Int(value.rounded()))
+        }
+
+        let rowCount = Int(ceil(Double(entries.count) / Double(columnCount)))
+        var rows: [[String]] = Array(repeating: [], count: rowCount)
+
+        for (index, entry) in entries.enumerated() {
+            rows[index / columnCount].append(entry)
+        }
+
+        return rows
     }
 }

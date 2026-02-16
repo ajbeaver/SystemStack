@@ -143,7 +143,7 @@ final class AppState: ObservableObject {
 
     func cpuHoverMode(id: String) -> CPUModule.HoverMode {
         guard let cpu = orderedModules.first(where: { $0.id == id }) as? CPUModule else {
-            return .percentage
+            return .sparkline
         }
         return cpu.hoverMode
     }

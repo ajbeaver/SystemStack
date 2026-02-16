@@ -3,7 +3,7 @@ import Darwin
 
 final class CPUModule: BaseMenuModule, @unchecked Sendable {
     enum HoverMode: String, CaseIterable, Identifiable {
-        case percentage = "Percentage"
+        case sparkline = "Sparkline"
         case userSystem = "User / System split"
         case perCore = "Per-core summary"
 
@@ -12,9 +12,11 @@ final class CPUModule: BaseMenuModule, @unchecked Sendable {
 
     private var previousLoadInfo: host_cpu_load_info_data_t?
     private var previousCoreTicks: [[UInt32]]?
+    private var usageHistory: [Double] = []
+    private var latestPerCorePercentages: [Double] = []
 
     private let hoverStateLock = NSLock()
-    private var hoverModeValue: HoverMode = .percentage
+    private var hoverModeValue: HoverMode = .sparkline
     private var hoverTextValue: String = "CPU —"
 
     init(isEnabled: Bool = true) {
@@ -40,10 +42,16 @@ final class CPUModule: BaseMenuModule, @unchecked Sendable {
         return hoverTextValue
     }
 
+    var perCorePercentages: [Double] {
+        hoverStateLock.lock()
+        defer { hoverStateLock.unlock() }
+        return latestPerCorePercentages
+    }
+
     override func update() async -> Bool {
         guard let currentLoadInfo = readCPULoadInfo() else {
             let displayChanged = setDisplayValueIfChanged("—")
-            let hoverChanged = setHoverTextIfChanged("CPU —")
+            let hoverChanged = setHoverTextIfChanged("Usage unavailable")
             return displayChanged || hoverChanged
         }
 
@@ -51,7 +59,7 @@ final class CPUModule: BaseMenuModule, @unchecked Sendable {
 
         guard let previousLoadInfo else {
             let displayChanged = setDisplayValueIfChanged("—")
-            let hoverChanged = setHoverTextIfChanged("CPU —")
+            let hoverChanged = setHoverTextIfChanged("Collecting CPU usage...")
             return displayChanged || hoverChanged
         }
 
@@ -70,7 +78,7 @@ final class CPUModule: BaseMenuModule, @unchecked Sendable {
 
         guard totalDelta > 0 else {
             let displayChanged = setDisplayValueIfChanged("—")
-            let hoverChanged = setHoverTextIfChanged("CPU —")
+            let hoverChanged = setHoverTextIfChanged("CPU usage unavailable")
             return displayChanged || hoverChanged
         }
 
@@ -81,6 +89,7 @@ final class CPUModule: BaseMenuModule, @unchecked Sendable {
         let usedPercent = (Double(totalDelta - idleDelta) / Double(totalDelta)) * 100.0
         let roundedUsedPercent = Int(usedPercent.rounded())
         let displayChanged = setDisplayValueIfChanged("\(roundedUsedPercent)%")
+        appendUsageSample(usedPercent)
 
         let hoverChanged = setHoverTextIfChanged(
             hoverTextForCurrentMode(
@@ -120,24 +129,76 @@ final class CPUModule: BaseMenuModule, @unchecked Sendable {
         totalDelta: UInt64
     ) -> String {
         let mode = hoverMode
+        let userPercent = totalDelta > 0 ? (Double(userDelta) / Double(totalDelta)) * 100.0 : 0
+        let systemPercent = totalDelta > 0 ? (Double(systemDelta) / Double(totalDelta)) * 100.0 : 0
+
         switch mode {
-        case .percentage:
-            return "CPU \(Int(usedPercent.rounded()))%"
+        case .sparkline:
+            let sparkline = makeSparkline()
+            return """
+            \(sparkline)
+            Current: \(formatPercent(usedPercent))
+            User: \(formatPercent(userPercent))
+            System: \(formatPercent(systemPercent))
+            """
         case .userSystem:
-            let userPercent = totalDelta > 0 ? (Double(userDelta) / Double(totalDelta)) * 100.0 : 0
-            let systemPercent = totalDelta > 0 ? (Double(systemDelta) / Double(totalDelta)) * 100.0 : 0
-            return "CPU U\(Int(userPercent.rounded())) S\(Int(systemPercent.rounded()))"
+            return """
+            User: \(formatPercent(userPercent))
+            System: \(formatPercent(systemPercent))
+            """
         case .perCore:
             guard let cores = readPerCorePercentages() else {
-                return "CPU \(Int(usedPercent.rounded()))%"
+                setPerCorePercentages([])
+                return "Per-core usage is not available yet."
             }
-            let summary = cores
-                .prefix(4)
-                .enumerated()
-                .map { index, value in "C\(index):\(Int(value.rounded()))" }
-                .joined(separator: " ")
-            return summary.isEmpty ? "CPU \(Int(usedPercent.rounded()))%" : "CPU \(summary)"
+            guard !cores.isEmpty else {
+                setPerCorePercentages([])
+                return "Per-core usage is unavailable."
+            }
+            setPerCorePercentages(cores)
+            let rows = cores.enumerated().map { index, value in
+                "Core \(index + 1): \(formatPercent(value))"
+            }
+            return rows.joined(separator: "\n")
         }
+    }
+
+    private func appendUsageSample(_ value: Double) {
+        hoverStateLock.lock()
+        usageHistory.append(value)
+        if usageHistory.count > 24 {
+            usageHistory.removeFirst(usageHistory.count - 24)
+        }
+        hoverStateLock.unlock()
+    }
+
+    private func setPerCorePercentages(_ values: [Double]) {
+        hoverStateLock.lock()
+        latestPerCorePercentages = values
+        hoverStateLock.unlock()
+    }
+
+    private func makeSparkline() -> String {
+        let symbols = Array("▁▂▃▄▅▆▇█")
+
+        hoverStateLock.lock()
+        let samples = usageHistory
+        hoverStateLock.unlock()
+
+        guard !samples.isEmpty else {
+            return "────────"
+        }
+
+        return samples.map { sample in
+            let clamped = max(0.0, min(100.0, sample))
+            let normalized = clamped / 100.0
+            let index = Int((normalized * Double(symbols.count - 1)).rounded())
+            return String(symbols[index])
+        }.joined()
+    }
+
+    private func formatPercent(_ value: Double) -> String {
+        "\(Int(value.rounded()))%"
     }
 
     private func readPerCorePercentages() -> [Double]? {

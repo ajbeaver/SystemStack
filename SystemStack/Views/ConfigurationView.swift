@@ -207,7 +207,7 @@ private struct CPUHoverSettingsView: View {
     let moduleID: String
 
     var body: some View {
-        Picker("Hover Mode", selection: Binding(
+        Picker("Mode", selection: Binding(
             get: { appState.cpuHoverMode(id: moduleID) },
             set: { appState.setCPUHoverMode(id: moduleID, mode: $0) }
         )) {
