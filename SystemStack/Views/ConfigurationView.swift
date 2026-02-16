@@ -3,25 +3,19 @@ import ServiceManagement
 import SwiftUI
 
 struct ConfigurationView: View {
-    private enum TopTab: String, CaseIterable, Identifiable {
-        case modules = "Modules"
-        case configuration = "Configuration"
-
-        var id: String { rawValue }
-    }
-
     @EnvironmentObject private var appState: AppState
     @State private var selectedModuleID: String?
-    @State private var topTab: TopTab = .modules
     @State private var launchAtLoginEnabled = false
     @State private var launchAtLoginAvailable = true
     @State private var launchAtLoginError: String?
+    private let configurationSelectionID = "__configuration__"
 
     private var filteredModules: [any MenuModule] {
         appState.orderedModules
     }
 
     private var selectedModule: (any MenuModule)? {
+        guard selectedModuleID != configurationSelectionID else { return nil }
         if let selectedModuleID,
            let selected = appState.orderedModules.first(where: { $0.id == selectedModuleID }) {
             return selected
@@ -30,39 +24,17 @@ struct ConfigurationView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            Spacer(minLength: 0)
-
-            VStack(spacing: 12) {
-                Picker("", selection: $topTab) {
-                    ForEach(TopTab.allCases) { tab in
-                        Text(tab.rawValue).tag(tab)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .padding(.horizontal, 16)
-                .padding(.top, 14)
-
-                switch topTab {
-                case .modules:
-                    modulesEditor
-                case .configuration:
-                    globalConfigurationView
-                }
-            }
-            .frame(width: 490, height: 560, alignment: .top)
-            .background(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .fill(Color.white.opacity(0.045))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 16, style: .continuous)
-                            .strokeBorder(Color.white.opacity(0.08), lineWidth: 1)
-                    )
-            )
-
-            Spacer(minLength: 0)
-        }
-        .frame(width: 560, height: 600, alignment: .top)
+        modulesEditor
+        .frame(
+            minWidth: 500,
+            idealWidth: 540,
+            maxWidth: .infinity,
+            minHeight: 540,
+            idealHeight: 580,
+            maxHeight: .infinity,
+            alignment: .top
+        )
+        .background(Color(nsColor: .windowBackgroundColor))
         .onAppear {
             refreshLaunchAtLoginState()
         }
@@ -71,15 +43,17 @@ struct ConfigurationView: View {
     private var modulesEditor: some View {
         HStack(spacing: 0) {
             leftColumn
-                .frame(width: 220)
+                .frame(width: 200, alignment: .topLeading)
+                .frame(maxHeight: .infinity, alignment: .topLeading)
+                .background(Color(nsColor: .underPageBackgroundColor))
 
             Divider()
 
             rightColumn
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                .background(Color(nsColor: .windowBackgroundColor))
         }
-        .padding(.horizontal, 10)
-        .padding(.bottom, 12)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
     private var leftColumn: some View {
@@ -89,10 +63,39 @@ struct ConfigurationView: View {
                     ForEach(filteredModules, id: \.id) { module in
                         moduleRow(module)
                     }
+
+                    Divider()
+                        .padding(.vertical, 4)
+
+                    configurationRow
                 }
             }
             .padding(.horizontal, 6)
             .padding(.vertical, 10)
+        }
+    }
+
+    private var configurationRow: some View {
+        let isSelected = selectedModuleID == configurationSelectionID
+
+        return HStack(spacing: 8) {
+            Image(systemName: "gearshape")
+                .foregroundStyle(.secondary)
+                .frame(width: 14)
+
+            Text("Configuration")
+                .lineLimit(1)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(isSelected ? Color.accentColor.opacity(0.16) : Color.clear)
+        )
+        .contentShape(Rectangle())
+        .onTapGesture {
+            selectedModuleID = configurationSelectionID
         }
     }
 
@@ -107,19 +110,6 @@ struct ConfigurationView: View {
             Text(appState.title(for: module))
                 .lineLimit(1)
                 .frame(maxWidth: .infinity, alignment: .leading)
-
-            Text(module.displayValue.isEmpty ? "—" : module.displayValue)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-
-            Toggle("", isOn: Binding(
-                get: { module.isEnabled },
-                set: { appState.setModuleEnabled(id: module.id, isEnabled: $0) }
-            ))
-            .labelsHidden()
-            .toggleStyle(.switch)
-            .scaleEffect(0.8)
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 6)
@@ -134,23 +124,29 @@ struct ConfigurationView: View {
     }
 
     private var rightColumn: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 12) {
-                if let module = selectedModule {
-                    Text(moduleHeaderTitle(for: module))
-                        .font(.title3)
-                        .fontWeight(.semibold)
-                        .padding(.top, 10)
+        Group {
+            if selectedModuleID == configurationSelectionID {
+                globalConfigurationView
+            } else {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 12) {
+                        if let module = selectedModule {
+                            Text(moduleHeaderTitle(for: module))
+                                .font(.title3)
+                                .fontWeight(.semibold)
+                                .padding(.top, 10)
 
-                    moduleSettingsView(for: module)
-                } else {
-                    Text("Select a module from the left.")
-                        .foregroundStyle(.secondary)
-                        .padding(.top, 18)
+                            moduleSettingsView(for: module)
+                        } else {
+                            Text("Select a module from the left.")
+                                .foregroundStyle(.secondary)
+                                .padding(.top, 18)
+                        }
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.bottom, 14)
                 }
             }
-            .padding(.horizontal, 14)
-            .padding(.bottom, 14)
         }
     }
 
@@ -263,6 +259,12 @@ struct ConfigurationView: View {
     @ViewBuilder
     private func moduleSettingsView(for module: any MenuModule) -> some View {
         VStack(alignment: .leading, spacing: 10) {
+            Toggle("Enabled", isOn: Binding(
+                get: { module.isEnabled },
+                set: { appState.setModuleEnabled(id: module.id, isEnabled: $0) }
+            ))
+            .toggleStyle(.switch)
+
             Toggle("Show Value", isOn: Binding(
                 get: { module.showsValue },
                 set: { appState.setModuleShowsValue(id: module.id, showsValue: $0) }

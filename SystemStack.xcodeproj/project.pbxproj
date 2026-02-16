@@ -6,14 +6,31 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXContainerItemProxy section */
+		91A000072F50000000E1A07E /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 170330372F4214CE00E1A07E /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 1703303E2F4214CE00E1A07E;
+			remoteInfo = SystemStack;
+		};
+/* End PBXContainerItemProxy section */
+
 /* Begin PBXFileReference section */
 		1703303F2F4214CE00E1A07E /* SystemStack.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SystemStack.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		179A04A82F42C50500C704E8 /* SystemStackTests */ = {isa = PBXFileReference; lastKnownFileType = folder; path = SystemStackTests; sourceTree = "<group>"; };
+		91A000012F50000000E1A07E /* SystemStackTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SystemStackTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		170330412F4214CE00E1A07E /* SystemStack */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = SystemStack;
+			sourceTree = "<group>";
+		};
+		91A000022F50000000E1A07E /* SystemStackTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = SystemStackTests;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -26,13 +43,22 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		91A000052F50000000E1A07E /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
 		170330362F4214CE00E1A07E = {
 			isa = PBXGroup;
 			children = (
+				179A04A82F42C50500C704E8 /* SystemStackTests */,
 				170330412F4214CE00E1A07E /* SystemStack */,
+				91A000022F50000000E1A07E /* SystemStackTests */,
 				170330402F4214CE00E1A07E /* Products */,
 			);
 			sourceTree = "<group>";
@@ -41,6 +67,7 @@
 			isa = PBXGroup;
 			children = (
 				1703303F2F4214CE00E1A07E /* SystemStack.app */,
+				91A000012F50000000E1A07E /* SystemStackTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -70,6 +97,29 @@
 			productReference = 1703303F2F4214CE00E1A07E /* SystemStack.app */;
 			productType = "com.apple.product-type.application";
 		};
+		91A000032F50000000E1A07E /* SystemStackTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 91A0000A2F50000000E1A07E /* Build configuration list for PBXNativeTarget "SystemStackTests" */;
+			buildPhases = (
+				91A000042F50000000E1A07E /* Sources */,
+				91A000052F50000000E1A07E /* Frameworks */,
+				91A000062F50000000E1A07E /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				91A000092F50000000E1A07E /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				91A000022F50000000E1A07E /* SystemStackTests */,
+			);
+			name = SystemStackTests;
+			packageProductDependencies = (
+			);
+			productName = SystemStackTests;
+			productReference = 91A000012F50000000E1A07E /* SystemStackTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -82,6 +132,10 @@
 				TargetAttributes = {
 					1703303E2F4214CE00E1A07E = {
 						CreatedOnToolsVersion = 26.2;
+					};
+					91A000032F50000000E1A07E = {
+						CreatedOnToolsVersion = 26.2;
+						TestTargetID = 1703303E2F4214CE00E1A07E;
 					};
 				};
 			};
@@ -100,12 +154,20 @@
 			projectRoot = "";
 			targets = (
 				1703303E2F4214CE00E1A07E /* SystemStack */,
+				91A000032F50000000E1A07E /* SystemStackTests */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
 		1703303D2F4214CE00E1A07E /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		91A000062F50000000E1A07E /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -122,7 +184,22 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		91A000042F50000000E1A07E /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		91A000092F50000000E1A07E /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 1703303E2F4214CE00E1A07E /* SystemStack */;
+			targetProxy = 91A000072F50000000E1A07E /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		170330482F4214CE00E1A07E /* Debug */ = {
@@ -307,6 +384,53 @@
 			};
 			name = Release;
 		};
+		91A0000B2F50000000E1A07E /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = QXB4YGYJBG;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@loader_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				MARKETING_VERSION = 1.1;
+				PRODUCT_BUNDLE_IDENTIFIER = com.ajbeaver.SystemStackTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_VERSION = 5.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/SystemStack.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/SystemStack";
+				TEST_TARGET_NAME = SystemStack;
+			};
+			name = Debug;
+		};
+		91A0000C2F50000000E1A07E /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = QXB4YGYJBG;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@loader_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				MARKETING_VERSION = 1.1;
+				PRODUCT_BUNDLE_IDENTIFIER = com.ajbeaver.SystemStackTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_VERSION = 5.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/SystemStack.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/SystemStack";
+				TEST_TARGET_NAME = SystemStack;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -324,6 +448,15 @@
 			buildConfigurations = (
 				1703304B2F4214CE00E1A07E /* Debug */,
 				1703304C2F4214CE00E1A07E /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		91A0000A2F50000000E1A07E /* Build configuration list for PBXNativeTarget "SystemStackTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				91A0000B2F50000000E1A07E /* Debug */,
+				91A0000C2F50000000E1A07E /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

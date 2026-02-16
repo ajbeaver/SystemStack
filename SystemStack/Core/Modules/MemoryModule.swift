@@ -138,21 +138,6 @@ final class MemoryModule: BaseMenuModule, @unchecked Sendable {
             )
         )
 
-        #if DEBUG
-        if displayChanged {
-            let usedGB = Double(usedBytes) / 1_073_741_824.0
-            let availableGB = Double(availableBytes) / 1_073_741_824.0
-            let totalGB = Double(totalBytes) / 1_073_741_824.0
-            let percentText = String(format: "%.1f", percentUsed)
-            print(
-                "MemoryModule usedBytes=\(usedBytes) (\(String(format: "%.2f", usedGB))G), "
-                    + "availableBytes=\(availableBytes) (\(String(format: "%.2f", availableGB))G), "
-                    + "totalBytes=\(totalBytes) (\(String(format: "%.2f", totalGB))G), "
-                    + "percentUsed=\(percentText)%"
-            )
-        }
-        #endif
-
         return displayChanged || hoverChanged
     }
 

@@ -1,0 +1,24 @@
+{
+  "configurations" : [
+    {
+      "id" : "6009D84B-C9CE-4667-9C8A-349839701A75",
+      "name" : "Configuration 1",
+      "options" : {
+
+      }
+    }
+  ],
+  "defaultOptions" : {
+
+  },
+  "testTargets" : [
+    {
+      "target" : {
+        "containerPath" : "container:SystemStack.xcodeproj",
+        "identifier" : "91A000032F50000000E1A07E",
+        "name" : "SystemStackTests"
+      }
+    }
+  ],
+  "version" : 1
+}

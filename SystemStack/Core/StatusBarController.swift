@@ -85,8 +85,11 @@ final class StatusBarController: NSObject {
         let moduleIDs = Set(modules.map(\.id))
 
         // Remove stale status items for modules that no longer exist.
-        for (moduleID, item) in statusItemsByModuleID where !moduleIDs.contains(moduleID) {
-            NSStatusBar.system.removeStatusItem(item)
+        let staleModuleIDs = statusItemsByModuleID.keys.filter { !moduleIDs.contains($0) }
+        for moduleID in staleModuleIDs {
+            if let item = statusItemsByModuleID[moduleID] {
+                NSStatusBar.system.removeStatusItem(item)
+            }
             statusItemsByModuleID.removeValue(forKey: moduleID)
         }
 
@@ -458,13 +461,14 @@ final class StatusBarController: NSObject {
         let hostingController = NSHostingController(rootView: rootView)
 
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 520, height: 560),
-            styleMask: [.titled, .closable, .miniaturizable],
+            contentRect: NSRect(x: 0, y: 0, width: 500, height: 540),
+            styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered,
             defer: false
         )
-        window.title = "SystemStack Configuration"
+        window.title = "SystemStack Settings"
         window.contentViewController = hostingController
+        window.minSize = NSSize(width: 500, height: 540)
         window.center()
         window.isReleasedWhenClosed = false
         window.level = .normal
