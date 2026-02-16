@@ -333,6 +333,7 @@ final class StatusBarController: NSObject {
         modulePopoverContent.title = appState.title(for: module)
         modulePopoverContent.value = module.displayValue.isEmpty ? "—" : module.displayValue
         modulePopoverContent.detail = moduleDetailText(for: module)
+        modulePopoverContent.showsScrollableDetail = module is MemoryModule
         if let cpu = module as? CPUModule, cpu.hoverMode == .perCore {
             let perCoreValues = cpu.perCorePercentages
             modulePopoverContent.showsPerCoreGrid = !perCoreValues.isEmpty
@@ -346,6 +347,9 @@ final class StatusBarController: NSObject {
     private func moduleDetailText(for module: BaseMenuModule) -> String {
         if let cpu = module as? CPUModule {
             return cpu.hoverText
+        }
+        if let memory = module as? MemoryModule {
+            return memory.hoverText
         }
         return "\(moduleShortLabel(for: module)) \(module.displayValue.isEmpty ? "—" : module.displayValue)"
     }
@@ -384,6 +388,7 @@ private final class ModulePopoverContent: ObservableObject {
     @Published var title = ""
     @Published var value = "—"
     @Published var detail = ""
+    @Published var showsScrollableDetail = false
     @Published var showsPerCoreGrid = false
     @Published var perCorePercentages: [Double] = []
 }
@@ -404,13 +409,13 @@ private struct ModuleDetailPopoverView: View {
 
             if content.showsPerCoreGrid {
                 CPUPerCoreGridView(values: content.perCorePercentages)
+            } else if content.showsScrollableDetail {
+                ScrollView(.vertical) {
+                    detailTextUnbounded
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
             } else {
-                Text(content.detail)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(8)
-                    .multilineTextAlignment(.leading)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                detailText
             }
 
             Spacer(minLength: 4)
@@ -425,6 +430,23 @@ private struct ModuleDetailPopoverView: View {
         }
         .padding(12)
         .frame(width: 280, height: 180, alignment: .topLeading)
+    }
+
+    private var detailText: some View {
+        Text(content.detail)
+            .font(.subheadline)
+            .foregroundStyle(.secondary)
+            .lineLimit(8)
+            .multilineTextAlignment(.leading)
+            .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var detailTextUnbounded: some View {
+        Text(content.detail)
+            .font(.subheadline)
+            .foregroundStyle(.secondary)
+            .multilineTextAlignment(.leading)
+            .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 

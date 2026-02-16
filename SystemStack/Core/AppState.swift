@@ -155,6 +155,20 @@ final class AppState: ObservableObject {
         objectWillChange.send()
     }
 
+    func memoryHoverMode(id: String) -> MemoryModule.HoverMode {
+        guard let memory = orderedModules.first(where: { $0.id == id }) as? MemoryModule else {
+            return .usedAvailable
+        }
+        return memory.hoverMode
+    }
+
+    func setMemoryHoverMode(id: String, mode: MemoryModule.HoverMode) {
+        guard let memory = orderedModules.first(where: { $0.id == id }) as? MemoryModule else { return }
+        memory.hoverMode = mode
+        statusEvents.send(.valuesChanged)
+        objectWillChange.send()
+    }
+
     func updateClockSettings(moduleID: String, _ mutate: (inout ClockSettings) -> Void) {
         var updated = clockSettingsByModuleID[moduleID] ?? .default(isEnabled: true)
         mutate(&updated)

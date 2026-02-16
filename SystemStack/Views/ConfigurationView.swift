@@ -197,6 +197,8 @@ struct ConfigurationView: View {
                 ClockModuleSettingsView(moduleID: module.id)
             } else if module.id == "cpu" {
                 CPUHoverSettingsView(moduleID: module.id)
+            } else if module.id == "memory" {
+                MemoryHoverSettingsView(moduleID: module.id)
             }
         }
     }
@@ -212,6 +214,23 @@ private struct CPUHoverSettingsView: View {
             set: { appState.setCPUHoverMode(id: moduleID, mode: $0) }
         )) {
             ForEach(CPUModule.HoverMode.allCases) { mode in
+                Text(mode.rawValue).tag(mode)
+            }
+        }
+        .pickerStyle(.menu)
+    }
+}
+
+private struct MemoryHoverSettingsView: View {
+    @EnvironmentObject private var appState: AppState
+    let moduleID: String
+
+    var body: some View {
+        Picker("Mode", selection: Binding(
+            get: { appState.memoryHoverMode(id: moduleID) },
+            set: { appState.setMemoryHoverMode(id: moduleID, mode: $0) }
+        )) {
+            ForEach(MemoryModule.HoverMode.allCases) { mode in
                 Text(mode.rawValue).tag(mode)
             }
         }
