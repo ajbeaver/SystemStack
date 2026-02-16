@@ -1,4 +1,5 @@
 import AppKit
+import ServiceManagement
 import SwiftUI
 
 struct ConfigurationView: View {
@@ -13,6 +14,9 @@ struct ConfigurationView: View {
     @State private var searchText = ""
     @State private var selectedModuleID: String?
     @State private var topTab: TopTab = .modules
+    @State private var launchAtLoginEnabled = false
+    @State private var launchAtLoginAvailable = true
+    @State private var launchAtLoginError: String?
 
     private var filteredModules: [any MenuModule] {
         appState.modules(matching: searchText)
@@ -27,15 +31,15 @@ struct ConfigurationView: View {
     }
 
     var body: some View {
-        VStack(spacing: 10) {
+        VStack(spacing: 12) {
             Picker("", selection: $topTab) {
                 ForEach(TopTab.allCases) { tab in
                     Text(tab.rawValue).tag(tab)
                 }
             }
             .pickerStyle(.segmented)
-            .padding(.horizontal, 12)
-            .padding(.top, 10)
+            .padding(.horizontal, 16)
+            .padding(.top, 14)
 
             switch topTab {
             case .modules:
@@ -44,19 +48,24 @@ struct ConfigurationView: View {
                 globalConfigurationView
             }
         }
-        .frame(width: 520, height: 560, alignment: .topLeading)
+        .frame(width: 560, height: 600, alignment: .top)
+        .onAppear {
+            refreshLaunchAtLoginState()
+        }
     }
 
     private var modulesEditor: some View {
         HStack(spacing: 0) {
             leftColumn
-                .frame(width: 200)
+                .frame(width: 220)
 
             Divider()
 
             rightColumn
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
+        .padding(.horizontal, 10)
+        .padding(.bottom, 12)
     }
 
     private var leftColumn: some View {
@@ -131,25 +140,27 @@ struct ConfigurationView: View {
                         .padding(.top, 18)
                 }
             }
-            .padding(.horizontal, 12)
-            .padding(.bottom, 12)
+            .padding(.horizontal, 14)
+            .padding(.bottom, 14)
         }
     }
 
     private var globalConfigurationView: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 14) {
-                GroupBox("Layout") {
+            VStack(spacing: 14) {
+                GroupBox("Startup") {
                     VStack(alignment: .leading, spacing: 10) {
-                        Picker("Overflow Behavior", selection: $appState.overflowBehavior) {
-                            ForEach(AppState.OverflowBehavior.allCases) { behavior in
-                                Text(behavior.rawValue).tag(behavior)
-                            }
-                        }
+                        Toggle("Launch at Login", isOn: Binding(
+                            get: { launchAtLoginEnabled },
+                            set: { setLaunchAtLogin($0) }
+                        ))
+                        .disabled(!launchAtLoginAvailable)
 
-                        Text("Tip: Hold ⌘ and drag menu bar icons to reorder them.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                        if let launchAtLoginError, !launchAtLoginError.isEmpty {
+                            Text(launchAtLoginError)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
                     }
                     .padding(8)
                 }
@@ -166,23 +177,84 @@ struct ConfigurationView: View {
                             }
                         }
 
-                        Text(versionString)
+                        Text("Settings are saved automatically.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
                     .padding(8)
                 }
+
+                GroupBox("About") {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(appName)
+                            .font(.subheadline)
+                            .fontWeight(.semibold)
+
+                        Text("Version \(appVersion)")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+
+                        Text("Build \(appBuild)")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(8)
+                }
+
+                Text("Tip: Hold ⌘ and drag menu bar icons to reorder them.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .padding(.horizontal, 12)
-            .padding(.bottom, 12)
+            .frame(maxWidth: 480)
+            .frame(maxWidth: .infinity)
+            .padding(.horizontal, 16)
+            .padding(.bottom, 16)
         }
     }
 
-    private var versionString: String {
-        let info = Bundle.main.infoDictionary
-        let version = info?["CFBundleShortVersionString"] as? String ?? "0"
-        let build = info?["CFBundleVersion"] as? String ?? "0"
-        return "Version \(version) (\(build))"
+    private var appName: String {
+        Bundle.main.infoDictionary?["CFBundleDisplayName"] as? String
+            ?? Bundle.main.infoDictionary?["CFBundleName"] as? String
+            ?? "SystemStack"
+    }
+
+    private var appVersion: String {
+        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0"
+    }
+
+    private var appBuild: String {
+        Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "0"
+    }
+
+    private func refreshLaunchAtLoginState() {
+        if #available(macOS 13.0, *) {
+            launchAtLoginAvailable = true
+            launchAtLoginEnabled = SMAppService.mainApp.status == .enabled
+        } else {
+            launchAtLoginAvailable = false
+            launchAtLoginEnabled = false
+        }
+    }
+
+    private func setLaunchAtLogin(_ enabled: Bool) {
+        if #available(macOS 13.0, *) {
+            do {
+                if enabled {
+                    try SMAppService.mainApp.register()
+                } else {
+                    try SMAppService.mainApp.unregister()
+                }
+                launchAtLoginEnabled = enabled
+                launchAtLoginError = nil
+            } catch {
+                launchAtLoginEnabled = SMAppService.mainApp.status == .enabled
+                launchAtLoginError = "Unable to update launch setting."
+            }
+        } else {
+            launchAtLoginEnabled = false
+            launchAtLoginError = "Launch at Login requires a newer macOS version."
+        }
     }
 
     @ViewBuilder
@@ -199,6 +271,10 @@ struct ConfigurationView: View {
                 CPUHoverSettingsView(moduleID: module.id)
             } else if module.id == "memory" {
                 MemoryHoverSettingsView(moduleID: module.id)
+            } else if module.id == "disk" {
+                DiskHoverSettingsView(moduleID: module.id)
+            } else if module.id == "network" {
+                NetworkHoverSettingsView(moduleID: module.id)
             }
         }
     }
@@ -209,15 +285,29 @@ private struct CPUHoverSettingsView: View {
     let moduleID: String
 
     var body: some View {
-        Picker("Mode", selection: Binding(
-            get: { appState.cpuHoverMode(id: moduleID) },
-            set: { appState.setCPUHoverMode(id: moduleID, mode: $0) }
-        )) {
-            ForEach(CPUModule.HoverMode.allCases) { mode in
-                Text(mode.rawValue).tag(mode)
+        VStack(alignment: .leading, spacing: 10) {
+            Picker("Mode", selection: Binding(
+                get: { appState.cpuHoverMode(id: moduleID) },
+                set: { appState.setCPUHoverMode(id: moduleID, mode: $0) }
+            )) {
+                ForEach(CPUModule.HoverMode.allCases) { mode in
+                    Text(mode.rawValue).tag(mode)
+                }
+            }
+            .pickerStyle(.menu)
+
+            if appState.cpuHoverMode(id: moduleID) == .sparkline {
+                Toggle("Show User", isOn: Binding(
+                    get: { appState.cpuShowsSparklineUser(id: moduleID) },
+                    set: { appState.setCPUShowsSparklineUser(id: moduleID, shows: $0) }
+                ))
+
+                Toggle("Show System", isOn: Binding(
+                    get: { appState.cpuShowsSparklineSystem(id: moduleID) },
+                    set: { appState.setCPUShowsSparklineSystem(id: moduleID, shows: $0) }
+                ))
             }
         }
-        .pickerStyle(.menu)
     }
 }
 
@@ -226,15 +316,104 @@ private struct MemoryHoverSettingsView: View {
     let moduleID: String
 
     var body: some View {
-        Picker("Mode", selection: Binding(
-            get: { appState.memoryHoverMode(id: moduleID) },
-            set: { appState.setMemoryHoverMode(id: moduleID, mode: $0) }
-        )) {
-            ForEach(MemoryModule.HoverMode.allCases) { mode in
-                Text(mode.rawValue).tag(mode)
+        VStack(alignment: .leading, spacing: 10) {
+            Toggle("Show Used", isOn: Binding(
+                get: { appState.memoryShowsUsed(id: moduleID) },
+                set: { appState.setMemoryShowsUsed(id: moduleID, shows: $0) }
+            ))
+
+            Toggle("Show Available", isOn: Binding(
+                get: { appState.memoryShowsAvailable(id: moduleID) },
+                set: { appState.setMemoryShowsAvailable(id: moduleID, shows: $0) }
+            ))
+
+            Toggle("Show Swap Used", isOn: Binding(
+                get: { appState.memoryShowsSwapUsed(id: moduleID) },
+                set: { appState.setMemoryShowsSwapUsed(id: moduleID, shows: $0) }
+            ))
+        }
+    }
+}
+
+private struct DiskHoverSettingsView: View {
+    @EnvironmentObject private var appState: AppState
+    let moduleID: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Picker("Mode", selection: Binding(
+                get: { appState.diskHoverMode(id: moduleID) },
+                set: { appState.setDiskHoverMode(id: moduleID, mode: $0) }
+            )) {
+                ForEach(DiskUsageModule.HoverMode.allCases) { mode in
+                    Text(mode.rawValue).tag(mode)
+                }
+            }
+            .pickerStyle(.menu)
+
+            if appState.diskHoverMode(id: moduleID) == .capacity {
+                Toggle("Show Used", isOn: Binding(
+                    get: { appState.diskShowsCapacityUsed(id: moduleID) },
+                    set: { appState.setDiskShowsCapacityUsed(id: moduleID, shows: $0) }
+                ))
+
+                Toggle("Show Available", isOn: Binding(
+                    get: { appState.diskShowsCapacityAvailable(id: moduleID) },
+                    set: { appState.setDiskShowsCapacityAvailable(id: moduleID, shows: $0) }
+                ))
+
+                Toggle("Show Total", isOn: Binding(
+                    get: { appState.diskShowsCapacityTotal(id: moduleID) },
+                    set: { appState.setDiskShowsCapacityTotal(id: moduleID, shows: $0) }
+                ))
+            } else {
+                Toggle("Show Volume List", isOn: Binding(
+                    get: { appState.diskShowsVolumeList(id: moduleID) },
+                    set: { appState.setDiskShowsVolumeList(id: moduleID, shows: $0) }
+                ))
             }
         }
-        .pickerStyle(.menu)
+    }
+}
+
+private struct NetworkHoverSettingsView: View {
+    @EnvironmentObject private var appState: AppState
+    let moduleID: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Picker("Mode", selection: Binding(
+                get: { appState.networkHoverMode(id: moduleID) },
+                set: { appState.setNetworkHoverMode(id: moduleID, mode: $0) }
+            )) {
+                ForEach(NetworkModule.HoverMode.allCases) { mode in
+                    Text(mode.rawValue).tag(mode)
+                }
+            }
+            .pickerStyle(.menu)
+
+            Picker("Units", selection: Binding(
+                get: { appState.networkSpeedUnitMode(id: moduleID) },
+                set: { appState.setNetworkSpeedUnitMode(id: moduleID, mode: $0) }
+            )) {
+                ForEach(NetworkModule.SpeedUnitMode.allCases) { mode in
+                    Text(mode.rawValue).tag(mode)
+                }
+            }
+            .pickerStyle(.menu)
+
+            if appState.networkSpeedUnitMode(id: moduleID) == .fixed {
+                Picker("Fixed Unit", selection: Binding(
+                    get: { appState.networkFixedSpeedUnit(id: moduleID) },
+                    set: { appState.setNetworkFixedSpeedUnit(id: moduleID, unit: $0) }
+                )) {
+                    ForEach(NetworkModule.FixedSpeedUnit.allCases) { unit in
+                        Text(unit.rawValue).tag(unit)
+                    }
+                }
+                .pickerStyle(.menu)
+            }
+        }
     }
 }
 
@@ -261,8 +440,8 @@ private struct ClockModuleSettingsView: View {
             Toggle("Use 24-Hour Time", isOn: Binding(
                 get: { appState.clockSettings(for: moduleID).use24Hour },
                 set: { value in
-                    appState.updateClockSettings(moduleID: moduleID) { settings in
-                        settings.use24Hour = value
+                    appState.updateClockSettings(moduleID: moduleID) { clockSettings in
+                        clockSettings.use24Hour = value
                     }
                 }
             ))
@@ -270,8 +449,8 @@ private struct ClockModuleSettingsView: View {
             Toggle("Show Seconds", isOn: Binding(
                 get: { appState.clockSettings(for: moduleID).showSeconds },
                 set: { value in
-                    appState.updateClockSettings(moduleID: moduleID) { settings in
-                        settings.showSeconds = value
+                    appState.updateClockSettings(moduleID: moduleID) { clockSettings in
+                        clockSettings.showSeconds = value
                     }
                 }
             ))
@@ -279,8 +458,8 @@ private struct ClockModuleSettingsView: View {
             Toggle("Show AM/PM", isOn: Binding(
                 get: { appState.clockSettings(for: moduleID).showAMPM },
                 set: { value in
-                    appState.updateClockSettings(moduleID: moduleID) { settings in
-                        settings.showAMPM = value
+                    appState.updateClockSettings(moduleID: moduleID) { clockSettings in
+                        clockSettings.showAMPM = value
                     }
                 }
             ))
@@ -289,8 +468,8 @@ private struct ClockModuleSettingsView: View {
             Toggle("Show Timezone Label", isOn: Binding(
                 get: { appState.clockSettings(for: moduleID).showTimezoneLabel },
                 set: { value in
-                    appState.updateClockSettings(moduleID: moduleID) { settings in
-                        settings.showTimezoneLabel = value
+                    appState.updateClockSettings(moduleID: moduleID) { clockSettings in
+                        clockSettings.showTimezoneLabel = value
                     }
                 }
             ))
@@ -298,8 +477,8 @@ private struct ClockModuleSettingsView: View {
             Picker("Timezone Mode", selection: Binding(
                 get: { appState.clockSettings(for: moduleID).timezoneMode },
                 set: { value in
-                    appState.updateClockSettings(moduleID: moduleID) { settings in
-                        settings.timezoneMode = value
+                    appState.updateClockSettings(moduleID: moduleID) { clockSettings in
+                        clockSettings.timezoneMode = value
                     }
                 }
             )) {
@@ -328,10 +507,8 @@ private struct ClockModuleSettingsView: View {
                             .foregroundStyle(.secondary)
                     }
 
-                    timezoneResultsView(
-                        search: customTimezoneSearch
-                    )
-                    .frame(height: 120)
+                    timezoneResultsView(search: customTimezoneSearch)
+                        .frame(height: 120)
                 }
             }
 

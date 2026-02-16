@@ -4,8 +4,7 @@ import Darwin
 final class CPUModule: BaseMenuModule, @unchecked Sendable {
     enum HoverMode: String, CaseIterable, Identifiable {
         case sparkline = "Sparkline"
-        case userSystem = "User / System split"
-        case perCore = "Per-core summary"
+        case perCore = "Cores"
 
         var id: String { rawValue }
     }
@@ -17,6 +16,8 @@ final class CPUModule: BaseMenuModule, @unchecked Sendable {
 
     private let hoverStateLock = NSLock()
     private var hoverModeValue: HoverMode = .sparkline
+    private var showsSparklineUserValue = true
+    private var showsSparklineSystemValue = true
     private var hoverTextValue: String = "CPU —"
 
     init(isEnabled: Bool = true) {
@@ -46,6 +47,32 @@ final class CPUModule: BaseMenuModule, @unchecked Sendable {
         hoverStateLock.lock()
         defer { hoverStateLock.unlock() }
         return latestPerCorePercentages
+    }
+
+    var showsSparklineUser: Bool {
+        get {
+            hoverStateLock.lock()
+            defer { hoverStateLock.unlock() }
+            return showsSparklineUserValue
+        }
+        set {
+            hoverStateLock.lock()
+            showsSparklineUserValue = newValue
+            hoverStateLock.unlock()
+        }
+    }
+
+    var showsSparklineSystem: Bool {
+        get {
+            hoverStateLock.lock()
+            defer { hoverStateLock.unlock() }
+            return showsSparklineSystemValue
+        }
+        set {
+            hoverStateLock.lock()
+            showsSparklineSystemValue = newValue
+            hoverStateLock.unlock()
+        }
     }
 
     override func update() async -> Bool {
@@ -93,7 +120,6 @@ final class CPUModule: BaseMenuModule, @unchecked Sendable {
 
         let hoverChanged = setHoverTextIfChanged(
             hoverTextForCurrentMode(
-                usedPercent: usedPercent,
                 userDelta: userDelta,
                 systemDelta: systemDelta,
                 totalDelta: totalDelta
@@ -123,7 +149,6 @@ final class CPUModule: BaseMenuModule, @unchecked Sendable {
     }
 
     private func hoverTextForCurrentMode(
-        usedPercent: Double,
         userDelta: UInt64,
         systemDelta: UInt64,
         totalDelta: UInt64
@@ -134,18 +159,14 @@ final class CPUModule: BaseMenuModule, @unchecked Sendable {
 
         switch mode {
         case .sparkline:
-            let sparkline = makeSparkline()
-            return """
-            \(sparkline)
-            Current: \(formatPercent(usedPercent))
-            User: \(formatPercent(userPercent))
-            System: \(formatPercent(systemPercent))
-            """
-        case .userSystem:
-            return """
-            User: \(formatPercent(userPercent))
-            System: \(formatPercent(systemPercent))
-            """
+            var lines = [makeSparkline()]
+            if showsSparklineUser {
+                lines.append("User: \(formatPercent(userPercent))")
+            }
+            if showsSparklineSystem {
+                lines.append("System: \(formatPercent(systemPercent))")
+            }
+            return lines.joined(separator: "\n")
         case .perCore:
             guard let cores = readPerCorePercentages() else {
                 setPerCorePercentages([])
@@ -189,9 +210,12 @@ final class CPUModule: BaseMenuModule, @unchecked Sendable {
             return "────────"
         }
 
+        let minSample = samples.min() ?? 0
+        let maxSample = samples.max() ?? 100
+        let span = max(maxSample - minSample, 8.0)
+
         return samples.map { sample in
-            let clamped = max(0.0, min(100.0, sample))
-            let normalized = clamped / 100.0
+            let normalized = max(0.0, min(1.0, (sample - minSample) / span))
             let index = Int((normalized * Double(symbols.count - 1)).rounded())
             return String(symbols[index])
         }.joined()

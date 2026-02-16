@@ -2,18 +2,12 @@ import Foundation
 import Darwin
 
 final class MemoryModule: BaseMenuModule, @unchecked Sendable {
-    enum HoverMode: String, CaseIterable, Identifiable {
-        case usedAvailable = "Used / Available"
-        case swap = "Swap"
-        case sparkline = "Sparkline"
-
-        var id: String { rawValue }
-    }
-
     private var pageSize: vm_size_t?
     private var totalMemoryBytes: UInt64?
     private let hoverStateLock = NSLock()
-    private var hoverModeValue: HoverMode = .usedAvailable
+    private var showsUsedValue = true
+    private var showsAvailableValue = true
+    private var showsSwapUsedValue = true
     private var hoverTextValue: String = "Memory —"
     private var usageHistory: [Double] = []
     
@@ -29,15 +23,41 @@ final class MemoryModule: BaseMenuModule, @unchecked Sendable {
         super.init(id: "memory", title: "Memory", symbolName: "memorychip", isEnabled: isEnabled)
     }
 
-    var hoverMode: HoverMode {
+    var showsUsed: Bool {
         get {
             hoverStateLock.lock()
             defer { hoverStateLock.unlock() }
-            return hoverModeValue
+            return showsUsedValue
         }
         set {
             hoverStateLock.lock()
-            hoverModeValue = newValue
+            showsUsedValue = newValue
+            hoverStateLock.unlock()
+        }
+    }
+
+    var showsAvailable: Bool {
+        get {
+            hoverStateLock.lock()
+            defer { hoverStateLock.unlock() }
+            return showsAvailableValue
+        }
+        set {
+            hoverStateLock.lock()
+            showsAvailableValue = newValue
+            hoverStateLock.unlock()
+        }
+    }
+
+    var showsSwapUsed: Bool {
+        get {
+            hoverStateLock.lock()
+            defer { hoverStateLock.unlock() }
+            return showsSwapUsedValue
+        }
+        set {
+            hoverStateLock.lock()
+            showsSwapUsedValue = newValue
             hoverStateLock.unlock()
         }
     }
@@ -111,8 +131,7 @@ final class MemoryModule: BaseMenuModule, @unchecked Sendable {
         let displayPercent = Int(percentUsed.rounded())
         let displayChanged = setDisplayValueIfChanged("\(displayPercent)%")
         let hoverChanged = setHoverTextIfChanged(
-            hoverTextForCurrentMode(
-                percentUsed: percentUsed,
+            hoverText(
                 usedBytes: usedBytes,
                 availableBytes: availableBytes,
                 swapUsedBytes: swapUsedBytes
@@ -155,28 +174,22 @@ final class MemoryModule: BaseMenuModule, @unchecked Sendable {
         return usage.used
     }
 
-    private func hoverTextForCurrentMode(
-        percentUsed: Double,
+    private func hoverText(
         usedBytes: UInt64,
         availableBytes: UInt64,
         swapUsedBytes: UInt64?
     ) -> String {
-        switch hoverMode {
-        case .usedAvailable:
-            return """
-            Used: \(formatGigabytes(usedBytes))
-            Available: \(formatGigabytes(availableBytes))
-            """
-        case .swap:
-            return """
-            Swap Used: \(formatSwap(swapUsedBytes))
-            """
-        case .sparkline:
-            return """
-            \(makeSparkline())
-            Used: \(formatGigabytes(usedBytes))
-            """
+        var lines = [makeSparkline()]
+        if showsUsed {
+            lines.append("Used: \(formatGigabytes(usedBytes))")
         }
+        if showsAvailable {
+            lines.append("Available: \(formatGigabytes(availableBytes))")
+        }
+        if showsSwapUsed {
+            lines.append("Swap Used: \(formatSwap(swapUsedBytes))")
+        }
+        return lines.joined(separator: "\n")
     }
 
     private func appendUsageSample(_ value: Double) {
@@ -199,9 +212,12 @@ final class MemoryModule: BaseMenuModule, @unchecked Sendable {
             return "────────"
         }
 
+        let minSample = samples.min() ?? 0
+        let maxSample = samples.max() ?? 100
+        let span = max(maxSample - minSample, 8.0)
+
         return samples.map { sample in
-            let clamped = max(0.0, min(100.0, sample))
-            let normalized = clamped / 100.0
+            let normalized = max(0.0, min(1.0, (sample - minSample) / span))
             let index = Int((normalized * Double(symbols.count - 1)).rounded())
             return String(symbols[index])
         }.joined()

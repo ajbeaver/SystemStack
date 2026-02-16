@@ -14,6 +14,8 @@ final class StatusBarController: NSObject {
     private var lastOrderKey = ""
     private var activePopoverModuleID: String?
     private var configurationWindowController: NSWindowController?
+    private var valuesRefreshScheduled = false
+    private var popoverRefreshScheduled = false
 
     init(appState: AppState) {
         self.appState = appState
@@ -118,30 +120,24 @@ final class StatusBarController: NSObject {
     }
 
     private func updateVisibleModuleItems() {
-        renderLayout()
-        refreshActiveModulePopover()
+        guard !valuesRefreshScheduled else { return }
+        valuesRefreshScheduled = true
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.valuesRefreshScheduled = false
+            self.renderLayout()
+            self.scheduleActivePopoverRefresh()
+        }
     }
 
     private func renderLayout() {
         let modules = appState.orderedModules.compactMap { $0 as? BaseMenuModule }.filter(\.isEnabled)
         guard !modules.isEmpty else { return }
 
-        var forceHideValues = false
-        applyVisuals(modules, forceHideValues: forceHideValues)
-
-        if fitsWithinAvailableWidth(modules) {
-            return
+        applyVisuals(modules, forceHideValues: false)
+        if !fitsWithinAvailableWidth(modules) {
+            hideTrailingUntilFits(modules, forceHideValues: false)
         }
-
-        if appState.overflowBehavior == .iconOnlyFallback {
-            forceHideValues = true
-            applyVisuals(modules, forceHideValues: forceHideValues)
-            if fitsWithinAvailableWidth(modules) {
-                return
-            }
-        }
-
-        hideTrailingUntilFits(modules, forceHideValues: forceHideValues)
     }
 
     private func applyVisuals(_ modules: [BaseMenuModule], forceHideValues: Bool) {
@@ -329,19 +325,37 @@ final class StatusBarController: NSObject {
         updateModulePopoverContent(for: module)
     }
 
+    private func scheduleActivePopoverRefresh() {
+        guard modulePopover.isShown, !popoverRefreshScheduled else { return }
+        popoverRefreshScheduled = true
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.popoverRefreshScheduled = false
+            self.refreshActiveModulePopover()
+        }
+    }
+
     private func updateModulePopoverContent(for module: BaseMenuModule) {
-        modulePopoverContent.title = appState.title(for: module)
-        modulePopoverContent.value = module.displayValue.isEmpty ? "—" : module.displayValue
-        modulePopoverContent.detail = moduleDetailText(for: module)
-        modulePopoverContent.showsScrollableDetail = module is MemoryModule
+        var snapshot = modulePopoverContent.snapshot
+        snapshot.title = appState.title(for: module)
+        snapshot.value = module.displayValue.isEmpty ? "—" : module.displayValue
+        snapshot.detail = moduleDetailText(for: module)
+        if let disk = module as? DiskUsageModule {
+            snapshot.showsScrollableDetail = disk.hoverMode == .volumes
+        } else if let network = module as? NetworkModule {
+            snapshot.showsScrollableDetail = network.hoverMode == .interface
+        } else {
+            snapshot.showsScrollableDetail = module is MemoryModule
+        }
         if let cpu = module as? CPUModule, cpu.hoverMode == .perCore {
             let perCoreValues = cpu.perCorePercentages
-            modulePopoverContent.showsPerCoreGrid = !perCoreValues.isEmpty
-            modulePopoverContent.perCorePercentages = perCoreValues
+            snapshot.showsPerCoreGrid = !perCoreValues.isEmpty
+            snapshot.perCorePercentages = perCoreValues
         } else {
-            modulePopoverContent.showsPerCoreGrid = false
-            modulePopoverContent.perCorePercentages = []
+            snapshot.showsPerCoreGrid = false
+            snapshot.perCorePercentages = []
         }
+        modulePopoverContent.apply(snapshot: snapshot)
     }
 
     private func moduleDetailText(for module: BaseMenuModule) -> String {
@@ -351,7 +365,66 @@ final class StatusBarController: NSObject {
         if let memory = module as? MemoryModule {
             return memory.hoverText
         }
+        if let disk = module as? DiskUsageModule {
+            return disk.hoverText
+        }
+        if let network = module as? NetworkModule {
+            return network.hoverText
+        }
+        if module is ClockModule {
+            return clockDetailText(for: module.id, at: Date())
+        }
         return "\(moduleShortLabel(for: module)) \(module.displayValue.isEmpty ? "—" : module.displayValue)"
+    }
+
+    private func clockDetailText(for moduleID: String, at date: Date) -> String {
+        let timezone = resolvedClockTimeZone(for: moduleID)
+        let dateFormatter = DateFormatter()
+        dateFormatter.locale = .autoupdatingCurrent
+        dateFormatter.timeZone = timezone
+        dateFormatter.dateFormat = "EEEE, MMMM d"
+        let dateText = dateFormatter.string(from: date)
+
+        let timezoneName = fullTimeZoneName(for: timezone, at: date)
+        let offsetText = utcOffsetText(for: timezone, at: date)
+
+        return """
+        \(dateText)
+        \(timezoneName)
+        \(offsetText)
+        """
+    }
+
+    private func resolvedClockTimeZone(for moduleID: String) -> TimeZone {
+        let settings = appState.clockSettings(for: moduleID)
+        switch settings.timezoneMode {
+        case .system:
+            return .current
+        case .utc:
+            return TimeZone(secondsFromGMT: 0) ?? .current
+        case .custom:
+            if let id = settings.selectedTimezones.first, let timezone = TimeZone(identifier: id) {
+                return timezone
+            }
+            return .current
+        }
+    }
+
+    private func fullTimeZoneName(for timezone: TimeZone, at date: Date) -> String {
+        let style: TimeZone.NameStyle = timezone.isDaylightSavingTime(for: date) ? .daylightSaving : .standard
+        return timezone.localizedName(for: style, locale: .autoupdatingCurrent) ?? timezone.identifier
+    }
+
+    private func utcOffsetText(for timezone: TimeZone, at date: Date) -> String {
+        let seconds = timezone.secondsFromGMT(for: date)
+        let sign = seconds >= 0 ? "+" : "-"
+        let absolute = abs(seconds)
+        let hours = absolute / 3600
+        let minutes = (absolute % 3600) / 60
+        if minutes == 0 {
+            return "UTC\(sign)\(hours)"
+        }
+        return String(format: "UTC%@%d:%02d", sign, hours, minutes)
     }
 
     private func showConfigurationWindow() {
@@ -385,12 +458,12 @@ final class StatusBarController: NSObject {
 
 @MainActor
 private final class ModulePopoverContent: ObservableObject {
-    @Published var title = ""
-    @Published var value = "—"
-    @Published var detail = ""
-    @Published var showsScrollableDetail = false
-    @Published var showsPerCoreGrid = false
-    @Published var perCorePercentages: [Double] = []
+    @Published private(set) var snapshot = ModulePopoverSnapshot()
+
+    func apply(snapshot: ModulePopoverSnapshot) {
+        guard self.snapshot != snapshot else { return }
+        self.snapshot = snapshot
+    }
 }
 
 private struct ModuleDetailPopoverView: View {
@@ -400,16 +473,16 @@ private struct ModuleDetailPopoverView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(content.title)
+            Text(content.snapshot.title)
                 .font(.headline)
 
-            Text(content.value)
+            Text(content.snapshot.value)
                 .font(.title3)
                 .fontWeight(.semibold)
 
-            if content.showsPerCoreGrid {
-                CPUPerCoreGridView(values: content.perCorePercentages)
-            } else if content.showsScrollableDetail {
+            if content.snapshot.showsPerCoreGrid {
+                CPUPerCoreGridView(values: content.snapshot.perCorePercentages)
+            } else if content.snapshot.showsScrollableDetail {
                 ScrollView(.vertical) {
                     detailTextUnbounded
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -433,7 +506,7 @@ private struct ModuleDetailPopoverView: View {
     }
 
     private var detailText: some View {
-        Text(content.detail)
+        Text(content.snapshot.detail)
             .font(.subheadline)
             .foregroundStyle(.secondary)
             .lineLimit(8)
@@ -442,7 +515,7 @@ private struct ModuleDetailPopoverView: View {
     }
 
     private var detailTextUnbounded: some View {
-        Text(content.detail)
+        Text(content.snapshot.detail)
             .font(.subheadline)
             .foregroundStyle(.secondary)
             .multilineTextAlignment(.leading)
@@ -450,47 +523,53 @@ private struct ModuleDetailPopoverView: View {
     }
 }
 
+private struct ModulePopoverSnapshot: Equatable {
+    var title = ""
+    var value = "—"
+    var detail = ""
+    var showsScrollableDetail = false
+    var showsPerCoreGrid = false
+    var perCorePercentages: [Double] = []
+}
+
 private struct CPUPerCoreGridView: View {
     let values: [Double]
 
     var body: some View {
-        GeometryReader { proxy in
-            let columnCount = suggestedColumnCount(for: proxy.size.width, itemCount: values.count)
-            let rows = gridRows(columnCount: columnCount)
+        let columnCount = suggestedColumnCount(itemCount: values.count)
+        let rows = gridRows(columnCount: columnCount)
 
-            ScrollView(.vertical) {
-                VStack(alignment: .leading, spacing: 3) {
-                    ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
-                        HStack(alignment: .firstTextBaseline, spacing: 10) {
-                            ForEach(Array(row.enumerated()), id: \.offset) { _, entry in
-                                Text(entry)
+        ScrollView(.vertical) {
+            VStack(alignment: .leading, spacing: 3) {
+                ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
+                    HStack(alignment: .firstTextBaseline, spacing: 10) {
+                        ForEach(Array(row.enumerated()), id: \.offset) { _, entry in
+                            Text(entry)
+                                .font(.caption)
+                                .monospacedDigit()
+                                .foregroundStyle(.secondary)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        if row.count < columnCount {
+                            ForEach(0 ..< (columnCount - row.count), id: \.self) { _ in
+                                Text("")
                                     .font(.caption)
-                                    .monospacedDigit()
-                                    .foregroundStyle(.secondary)
                                     .frame(maxWidth: .infinity, alignment: .leading)
-                            }
-                            if row.count < columnCount {
-                                ForEach(0 ..< (columnCount - row.count), id: \.self) { _ in
-                                    Text("")
-                                        .font(.caption)
-                                        .frame(maxWidth: .infinity, alignment: .leading)
-                                }
                             }
                         }
                     }
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
-    private func suggestedColumnCount(for width: CGFloat, itemCount: Int) -> Int {
+    private func suggestedColumnCount(itemCount: Int) -> Int {
         if itemCount <= 4 { return min(2, max(1, itemCount)) }
-        if width >= 300 { return 4 }
-        if width >= 220 { return 3 }
-        return 2
+        if itemCount <= 8 { return 2 }
+        if itemCount <= 16 { return 3 }
+        return 4
     }
 
     private func gridRows(columnCount: Int) -> [[String]] {

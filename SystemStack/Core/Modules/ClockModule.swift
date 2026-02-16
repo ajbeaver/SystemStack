@@ -1,12 +1,12 @@
 import Foundation
 
-enum TimezoneMode: String, CaseIterable, Sendable {
+enum TimezoneMode: String, CaseIterable, Sendable, Codable {
     case system
     case utc
     case custom
 }
 
-struct ClockSettings: Sendable {
+struct ClockSettings: Sendable, Codable {
     var isEnabled: Bool
     var use24Hour: Bool
     var showSeconds: Bool
