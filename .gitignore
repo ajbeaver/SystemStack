@@ -1,5 +1,20 @@
+# macOS
 .DS_Store
-build/
+.AppleDouble
+.LSOverride
+
+# Xcode
 DerivedData/
+build/
 *.xcworkspace
 xcuserdata/
+*.xcuserstate
+*.xccheckout
+*.xcscmblueprint
+
+# Archives
+*.xcarchive
+*.ipa
+
+# Swift Package Manager
+.build/
