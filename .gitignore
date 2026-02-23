@@ -18,3 +18,10 @@ xcuserdata/
 
 # Swift Package Manager
 .build/
+# Local design / release notes
+ChangeLog_*.txt
+change.log
+
+# Loose icon exports (not Assets.xcassets)
+AppIcon.png
+AppIcon.pxd
